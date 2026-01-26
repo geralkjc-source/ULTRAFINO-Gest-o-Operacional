@@ -44,7 +44,7 @@ const ChecklistArea: React.FC<ChecklistAreaProps> = ({ onSaveReport }) => {
   const [lastSavedReport, setLastSavedReport] = useState<Report | null>(null);
   const [copyFeedback, setCopyFeedback] = useState(false);
 
-  const isScadaArea = currentArea === Area.BOMBEAMENTO || currentArea === Area.HBF_C || currentArea === Area.HBF_D;
+  const isScadaArea = currentArea === Area.BOMBEAMENTO || currentArea === Area.HBF_C || currentArea === Area.HBF_D || currentArea === Area.DFP2;
 
   useEffect(() => {
     const template = CHECKLIST_TEMPLATES[currentArea];
