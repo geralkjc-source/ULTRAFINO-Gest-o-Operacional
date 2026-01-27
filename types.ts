@@ -35,6 +35,7 @@ export interface Report {
   items: ChecklistItem[];
   pendingItems: PendingItem[];
   generalObservations: string;
+  synced?: boolean; // Controle de sincronização Google Drive
 }
 
 export interface PendingItem {
@@ -48,4 +49,5 @@ export interface PendingItem {
   operator: string;
   turma: Turma;
   comments?: Comment[];
+  synced?: boolean; // Controle de sincronização Google Drive
 }

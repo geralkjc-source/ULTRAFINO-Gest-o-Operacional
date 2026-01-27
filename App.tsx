@@ -12,12 +12,16 @@ import {
   X,
   ChevronRight,
   BrainCircuit,
-  Settings
+  Settings,
+  Cloud,
+  CloudOff,
+  RefreshCw
 } from 'lucide-react';
 import Dashboard from './pages/Dashboard';
 import ChecklistArea from './pages/ChecklistArea';
 import PendingList from './pages/PendingList';
 import ReportsHistory from './pages/ReportsHistory';
+import SyncDashboard from './pages/SyncDashboard';
 import { Area, Report, PendingItem, Comment, ChecklistItem } from './types';
 
 const VulcanLogo = ({ className = "" }: { className?: string }) => (
@@ -26,12 +30,18 @@ const VulcanLogo = ({ className = "" }: { className?: string }) => (
   </span>
 );
 
-const Sidebar = ({ isOpen, toggle }: { isOpen: boolean; toggle: () => void }) => {
+const Sidebar = ({ isOpen, toggle, unsyncedCount }: { isOpen: boolean; toggle: () => void, unsyncedCount: number }) => {
   const location = useLocation();
   const menuItems = [
     { path: '/', label: 'Dashboard', icon: <LayoutDashboard size={20} /> },
     { path: '/pending', label: 'Pendências', icon: <AlertCircle size={20} /> },
     { path: '/history', label: 'Histórico', icon: <FileSpreadsheet size={20} /> },
+    { 
+      path: '/sync', 
+      label: 'Sincronização', 
+      icon: <Cloud size={20} />, 
+      badge: unsyncedCount > 0 ? unsyncedCount : null 
+    },
   ];
 
   const areaItems = Object.values(Area).map(area => ({
@@ -42,7 +52,6 @@ const Sidebar = ({ isOpen, toggle }: { isOpen: boolean; toggle: () => void }) =>
 
   return (
     <>
-      {/* Mobile Backdrop */}
       {isOpen && (
         <div 
           className="fixed inset-0 bg-slate-900/50 z-40 lg:hidden" 
@@ -73,12 +82,19 @@ const Sidebar = ({ isOpen, toggle }: { isOpen: boolean; toggle: () => void }) =>
                   <Link
                     key={item.path}
                     to={item.path}
-                    className={`flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors ${
+                    className={`flex items-center justify-between px-3 py-2.5 rounded-lg transition-colors ${
                       location.pathname === item.path ? 'bg-blue-600 text-white' : 'text-slate-400 hover:bg-slate-800 hover:text-white'
                     }`}
                   >
-                    {item.icon}
-                    <span className="font-medium">{item.label}</span>
+                    <div className="flex items-center gap-3">
+                      {item.icon}
+                      <span className="font-medium">{item.label}</span>
+                    </div>
+                    {item.badge && (
+                      <span className="bg-amber-500 text-white text-[10px] font-black px-1.5 py-0.5 rounded-full animate-pulse">
+                        {item.badge}
+                      </span>
+                    )}
                   </Link>
                 ))}
               </div>
@@ -115,7 +131,7 @@ const Sidebar = ({ isOpen, toggle }: { isOpen: boolean; toggle: () => void }) =>
   );
 };
 
-const Header = ({ onToggleSidebar }: { onToggleSidebar: () => void }) => (
+const Header = ({ onToggleSidebar, unsyncedCount }: { onToggleSidebar: () => void, unsyncedCount: number }) => (
   <header className="sticky top-0 z-30 bg-white/80 backdrop-blur-md border-b border-slate-200 px-6 py-4 flex items-center justify-between">
     <div className="flex items-center gap-4">
       <button onClick={onToggleSidebar} className="lg:hidden p-2 text-slate-600 hover:bg-slate-100 rounded-md">
@@ -128,7 +144,13 @@ const Header = ({ onToggleSidebar }: { onToggleSidebar: () => void }) => (
         <h2 className="text-slate-800 font-semibold text-lg hidden sm:block">Plataforma de Relatórios & Pendências</h2>
       </div>
     </div>
-    <div className="flex items-center gap-3">
+    <div className="flex items-center gap-4">
+      {unsyncedCount > 0 && (
+        <div className="hidden md:flex items-center gap-2 bg-amber-50 text-amber-600 px-3 py-1.5 rounded-full border border-amber-100 text-[10px] font-black uppercase tracking-wider animate-in fade-in slide-in-from-right-2">
+          <CloudOff size={14} />
+          {unsyncedCount} Itens Pendentes de Nuvem
+        </div>
+      )}
       <div className="w-8 h-8 rounded-full bg-slate-100 border border-slate-200 flex items-center justify-center text-slate-400">
         <Settings size={18} />
       </div>
@@ -148,19 +170,23 @@ const App: React.FC = () => {
     if (savedPending) setPendingItems(JSON.parse(savedPending));
   }, []);
 
+  const unsyncedCount = 
+    reports.filter(r => !r.synced).length + 
+    pendingItems.filter(p => !p.synced).length;
+
   const addReport = (report: Report) => {
-    const updatedReports = [report, ...reports];
+    // Todo novo reporte nasce não sincronizado
+    const newReport = { ...report, synced: false };
+    const updatedReports = [newReport, ...reports];
     setReports(updatedReports);
     localStorage.setItem('ultrafino_reports', JSON.stringify(updatedReports));
     
-    // Extração Automática com Inteligência de Contexto de TAG
     const newPendingFromChecklist: PendingItem[] = [];
     
     report.items.forEach((item, index) => {
       if (item.status === 'fail' || item.status === 'warning') {
         let finalTag = item.label;
 
-        // Se for um sub-item (começa com "- "), busca o equipamento pai
         if (item.label.startsWith('- ')) {
           for (let i = index - 1; i >= 0; i--) {
             if (!report.items[i].label.startsWith('- ') && !report.items[i].label.startsWith('SECTION:')) {
@@ -180,7 +206,8 @@ const App: React.FC = () => {
           timestamp: Date.now(),
           operator: report.operator,
           turma: report.turma,
-          comments: []
+          comments: [],
+          synced: false // Pendência nova nasce não sincronizada
         });
       }
     });
@@ -193,7 +220,8 @@ const App: React.FC = () => {
   };
 
   const resolvePending = (id: string) => {
-    const updated = pendingItems.map(p => p.id === id ? { ...p, status: 'resolvido' as const } : p);
+    // Ao resolver, marcamos como não sincronizado para atualizar na nuvem
+    const updated = pendingItems.map(p => p.id === id ? { ...p, status: 'resolvido' as const, synced: false } : p);
     setPendingItems(updated);
     localStorage.setItem('ultrafino_pending', JSON.stringify(updated));
   };
@@ -206,41 +234,30 @@ const App: React.FC = () => {
       timestamp: Date.now()
     };
     const updated = pendingItems.map(p => 
-      p.id === pendingId ? { ...p, comments: [...(p.comments || []), newComment] } : p
+      p.id === pendingId ? { ...p, comments: [...(p.comments || []), newComment], synced: false } : p
     );
     setPendingItems(updated);
     localStorage.setItem('ultrafino_pending', JSON.stringify(updated));
   };
 
-  const addReportItemComment = (reportId: string, itemId: string, commentText: string) => {
-    const newComment: Comment = {
-      id: `comm-${Date.now()}`,
-      text: commentText,
-      author: 'Operador',
-      timestamp: Date.now()
-    };
-    const updated = reports.map(r => {
-      if (r.id === reportId) {
-        return {
-          ...r,
-          items: r.items.map(item => 
-            item.id === itemId ? { ...item, comments: [...(item.comments || []), newComment] } : item
-          )
-        };
-      }
-      return r;
-    });
-    setReports(updated);
-    localStorage.setItem('ultrafino_reports', JSON.stringify(updated));
+  const onSyncSuccess = (syncedReportIds: string[], syncedPendingIds: string[]) => {
+    const updatedReports = reports.map(r => syncedReportIds.includes(r.id) ? { ...r, synced: true } : r);
+    const updatedPending = pendingItems.map(p => syncedPendingIds.includes(p.id) ? { ...p, synced: true } : p);
+    
+    setReports(updatedReports);
+    setPendingItems(updatedPending);
+    
+    localStorage.setItem('ultrafino_reports', JSON.stringify(updatedReports));
+    localStorage.setItem('ultrafino_pending', JSON.stringify(updatedPending));
   };
 
   return (
     <HashRouter>
       <div className="flex min-h-screen bg-slate-50">
-        <Sidebar isOpen={isSidebarOpen} toggle={() => setIsSidebarOpen(!isSidebarOpen)} />
+        <Sidebar isOpen={isSidebarOpen} toggle={() => setIsSidebarOpen(!isSidebarOpen)} unsyncedCount={unsyncedCount} />
         
         <main className="flex-1 lg:ml-72 flex flex-col min-w-0">
-          <Header onToggleSidebar={() => setIsSidebarOpen(!isSidebarOpen)} />
+          <Header onToggleSidebar={() => setIsSidebarOpen(!isSidebarOpen)} unsyncedCount={unsyncedCount} />
           
           <div className="flex-1 p-6">
             <Routes>
@@ -255,7 +272,11 @@ const App: React.FC = () => {
               />
               <Route 
                 path="/history" 
-                element={<ReportsHistory reports={reports} onAddItemComment={addReportItemComment} />} 
+                element={<ReportsHistory reports={reports} onAddItemComment={() => {}} />} 
+              />
+              <Route 
+                path="/sync" 
+                element={<SyncDashboard reports={reports} pendingItems={pendingItems} onSyncSuccess={onSyncSuccess} />} 
               />
             </Routes>
           </div>
@@ -264,7 +285,7 @@ const App: React.FC = () => {
             <div className="bg-white px-2 py-1 rounded-md shadow-sm opacity-60 grayscale hover:grayscale-0 transition-all">
                <VulcanLogo className="text-[10px] text-slate-900" />
             </div>
-            <p>&copy; 2024 Ultrafino Operações Industriais - Todos os direitos reservados.</p>
+            <p>&copy; {new Date().getFullYear()} Ultrafino Operações Industriais - Todos os direitos reservados.</p>
           </footer>
         </main>
       </div>

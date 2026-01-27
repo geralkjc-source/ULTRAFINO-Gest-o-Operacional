@@ -10,7 +10,11 @@ import {
   Zap,
   Droplets,
   Settings2,
-  Filter
+  Filter,
+  Cloud,
+  CloudOff,
+  // Add missing RefreshCw import
+  RefreshCw
 } from 'lucide-react';
 import { Report, PendingItem, Area } from '../types';
 
@@ -23,6 +27,9 @@ const Dashboard: React.FC<DashboardProps> = ({ reports, pendingItems }) => {
   const navigate = useNavigate();
   const openPending = pendingItems.filter(p => p.status === 'aberto');
   const criticalPending = openPending.filter(p => p.priority === 'alta');
+  const unsyncedCount = 
+    reports.filter(r => !r.synced).length + 
+    pendingItems.filter(p => !p.synced).length;
   
   const getAreaStats = (area: Area) => {
     const areaReports = reports.filter(r => r.area === area);
@@ -115,6 +122,36 @@ const Dashboard: React.FC<DashboardProps> = ({ reports, pendingItems }) => {
           icon={<Filter size={28} />} 
           description="Filtros de lona DFP 2. Inspeção de sopragem e unidades hidráulicas."
         />
+        
+        {/* Cloud Sync Status Card */}
+        <button 
+          onClick={() => navigate('/sync')}
+          className={`p-6 rounded-2xl border-2 transition-all flex flex-col ${
+            unsyncedCount > 0 
+              ? 'bg-amber-50 border-amber-200 hover:shadow-lg shadow-amber-200/20' 
+              : 'bg-emerald-50 border-emerald-200 hover:shadow-lg shadow-emerald-200/20'
+          }`}
+        >
+          <div className={`w-14 h-14 rounded-xl flex items-center justify-center mb-6 ${
+            unsyncedCount > 0 ? 'bg-amber-500 text-white' : 'bg-emerald-500 text-white'
+          }`}>
+            {unsyncedCount > 0 ? <CloudOff size={28} /> : <Cloud size={28} />}
+          </div>
+          <h3 className="text-xl font-black text-slate-900 uppercase tracking-tight mb-2">Google Drive</h3>
+          <p className="text-slate-500 text-xs font-medium mb-6 flex-grow">
+            {unsyncedCount > 0 
+              ? `Você possui ${unsyncedCount} registros salvos localmente aguardando envio para a nuvem.`
+              : 'Todos os seus dados operacionais estão sincronizados e seguros no Google Drive.'}
+          </p>
+          <div className="pt-4 border-t border-slate-100 flex items-center justify-between mt-auto">
+            <span className={`text-[10px] font-black uppercase tracking-widest ${
+              unsyncedCount > 0 ? 'text-amber-600' : 'text-emerald-600'
+            }`}>
+              {unsyncedCount > 0 ? 'Pendente Sincronização' : 'Base de Dados Íntegra'}
+            </span>
+            <RefreshCw size={18} className={unsyncedCount > 0 ? 'text-amber-500 animate-spin-slow' : 'text-emerald-500'} />
+          </div>
+        </button>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 pt-6">
@@ -151,13 +188,16 @@ const Dashboard: React.FC<DashboardProps> = ({ reports, pendingItems }) => {
                       </span>
                     </td>
                     <td className="px-6 py-4">
-                      <span className={`px-2 py-1 rounded text-[9px] font-black uppercase ${
-                        report.items.every(i => i.status !== 'fail' && i.status !== 'warning') 
-                          ? 'bg-emerald-100 text-emerald-700' 
-                          : 'bg-amber-100 text-amber-700'
-                      }`}>
-                        {report.items.every(i => i.status !== 'fail' && i.status !== 'warning') ? 'CONFORME' : 'ANOMALIAS'}
-                      </span>
+                      <div className="flex items-center gap-2">
+                        <span className={`px-2 py-1 rounded text-[9px] font-black uppercase ${
+                          report.items.every(i => i.status !== 'fail' && i.status !== 'warning') 
+                            ? 'bg-emerald-100 text-emerald-700' 
+                            : 'bg-amber-100 text-amber-700'
+                        }`}>
+                          {report.items.every(i => i.status !== 'fail' && i.status !== 'warning') ? 'CONFORME' : 'ANOMALIAS'}
+                        </span>
+                        {report.synced ? <Cloud size={14} className="text-emerald-500" /> : <CloudOff size={14} className="text-amber-400" />}
+                      </div>
                     </td>
                   </tr>
                 ))}
