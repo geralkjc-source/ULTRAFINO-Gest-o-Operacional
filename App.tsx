@@ -18,7 +18,7 @@ import Dashboard from './pages/Dashboard';
 import ChecklistArea from './pages/ChecklistArea';
 import PendingList from './pages/PendingList';
 import ReportsHistory from './pages/ReportsHistory';
-import { Area, Report, PendingItem, Comment } from './types';
+import { Area, Report, PendingItem, Comment, ChecklistItem } from './types';
 
 const VulcanLogo = ({ className = "" }: { className?: string }) => (
   <span className={`font-black tracking-tighter select-none ${className}`}>
@@ -56,7 +56,6 @@ const Sidebar = ({ isOpen, toggle }: { isOpen: boolean; toggle: () => void }) =>
       `}>
         <div className="flex flex-col h-full">
           <div className="p-6 flex items-center gap-3 border-b border-slate-800">
-            {/* Logo Container with White Background for visibility */}
             <div className="bg-white px-3 py-2 rounded-lg flex items-center justify-center shrink-0 shadow-inner">
                <VulcanLogo className="text-xl text-slate-900" />
             </div>
@@ -129,7 +128,6 @@ const Header = ({ onToggleSidebar }: { onToggleSidebar: () => void }) => (
         <h2 className="text-slate-800 font-semibold text-lg hidden sm:block">Plataforma de Relatórios & Pendências</h2>
       </div>
     </div>
-    {/* Profile info removed as requested */}
     <div className="flex items-center gap-3">
       <div className="w-8 h-8 rounded-full bg-slate-100 border border-slate-200 flex items-center justify-center text-slate-400">
         <Settings size={18} />
@@ -143,7 +141,6 @@ const App: React.FC = () => {
   const [reports, setReports] = useState<Report[]>([]);
   const [pendingItems, setPendingItems] = useState<PendingItem[]>([]);
 
-  // Load initial data
   useEffect(() => {
     const savedReports = localStorage.getItem('ultrafino_reports');
     const savedPending = localStorage.getItem('ultrafino_pending');
@@ -156,18 +153,37 @@ const App: React.FC = () => {
     setReports(updatedReports);
     localStorage.setItem('ultrafino_reports', JSON.stringify(updatedReports));
     
-    // Auto-extract pending items from report (FAIL = PARADO, WARNING = ANOMALIA)
-    const newPendingFromChecklist = report.items
-      .filter(item => item.status === 'fail' || item.status === 'warning')
-      .map(item => ({
-        id: `pend-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-        description: `${item.status === 'fail' ? '🔴 PARADO' : '⚠️ ANOMALIA'}: ${item.label}. Obs: ${item.observation || 'Sem observação'}`,
-        priority: (item.status === 'fail' ? 'alta' : 'media') as 'alta' | 'media',
-        status: 'aberto' as const,
-        area: report.area,
-        timestamp: Date.now(),
-        comments: []
-      }));
+    // Extração Automática com Inteligência de Contexto de TAG
+    const newPendingFromChecklist: PendingItem[] = [];
+    
+    report.items.forEach((item, index) => {
+      if (item.status === 'fail' || item.status === 'warning') {
+        let finalTag = item.label;
+
+        // Se for um sub-item (começa com "- "), busca o equipamento pai
+        if (item.label.startsWith('- ')) {
+          for (let i = index - 1; i >= 0; i--) {
+            if (!report.items[i].label.startsWith('- ') && !report.items[i].label.startsWith('SECTION:')) {
+              finalTag = `${report.items[i].label} ${item.label}`;
+              break;
+            }
+          }
+        }
+
+        newPendingFromChecklist.push({
+          id: `pend-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+          tag: finalTag.replace('- ', '').trim().toUpperCase(),
+          description: item.observation?.trim() || (item.status === 'fail' ? 'FORA DE SERVIÇO' : 'ANOMALIA / ATENÇÃO'),
+          priority: (item.status === 'fail' ? 'alta' : 'media') as 'alta' | 'media',
+          status: 'aberto' as const,
+          area: report.area,
+          timestamp: Date.now(),
+          operator: report.operator,
+          turma: report.turma,
+          comments: []
+        });
+      }
+    });
 
     if (newPendingFromChecklist.length > 0) {
       const updatedPending = [...newPendingFromChecklist, ...pendingItems];

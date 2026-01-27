@@ -39,10 +39,13 @@ export interface Report {
 
 export interface PendingItem {
   id: string;
+  tag: string;
   description: string;
   priority: 'baixa' | 'media' | 'alta';
   status: 'aberto' | 'resolvido';
   area: Area;
   timestamp: number;
+  operator: string;
+  turma: Turma;
   comments?: Comment[];
 }

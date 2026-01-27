@@ -1,42 +1,121 @@
 
-import { Report, ChecklistItem, Area } from '../types';
+import { Report, ChecklistItem, Area, PendingItem } from '../types';
 import { CHECKLIST_TEMPLATES } from '../constants';
 
 /**
+ * Formata um resumo de múltiplas pendências no formato solicitado.
+ */
+export const formatSummaryForWhatsApp = (items: PendingItem[], note?: string): string => {
+  let message = `*PENDÊNCIAS E PONTOS DE ATENÇÃO NO CIRCUITO DE ULTRAFINOS*\n\n`;
+
+  if (note) {
+    message += `*Nota:* ${note}\n\n`;
+  }
+
+  // Agrupar por área
+  const groupedByArea: Record<string, PendingItem[]> = {};
+  items.forEach(item => {
+    if (!groupedByArea[item.area]) groupedByArea[item.area] = [];
+    groupedByArea[item.area].push(item);
+  });
+
+  Object.entries(groupedByArea).forEach(([area, areaItems]) => {
+    message += `*${area.toUpperCase()}*\n`;
+    
+    areaItems.forEach(item => {
+      let statusEmoji = '⚪';
+      if (item.status === 'resolvido') {
+        statusEmoji = '✅';
+      } else {
+        statusEmoji = item.priority === 'alta' ? '🔴' : '🟡';
+      }
+
+      const tagPart = item.tag ? item.tag.trim() : '';
+      message += `▪️${tagPart}${statusEmoji} ${item.description.toUpperCase()}\n`;
+    });
+    message += `\n`;
+  });
+
+  return message.trim();
+};
+
+/**
+ * Formata uma pendência individual para compartilhamento.
+ */
+export const formatPendingForWhatsApp = (item: PendingItem): string => {
+  const dateStr = new Date(item.timestamp).toLocaleDateString('pt-BR');
+  const timeStr = new Date(item.timestamp).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+  
+  const priorityEmoji = item.priority === 'alta' ? '🔴' : item.priority === 'media' ? '🟡' : '🔵';
+  
+  let message = `*🚨 PENDÊNCIA OPERACIONAL - ULTRAFINO*\n\n`;
+  message += `📍 *ÁREA:* ${item.area.toUpperCase()}\n`;
+  message += `🏷️ *TAG:* ${item.tag || 'N/A'}\n`;
+  message += `${priorityEmoji} *PRIORIDADE:* ${item.priority.toUpperCase()}\n`;
+  message += `📝 *DESCRIÇÃO:* ${item.description.toUpperCase()}\n`;
+  message += `⏰ *DATA:* ${dateStr} às ${timeStr}\n`;
+  message += `🔄 *STATUS:* ${item.status.toUpperCase()}\n`;
+
+  if (item.comments && item.comments.length > 0) {
+    message += `\n💬 *ÚLTIMOS COMENTÁRIOS:*\n`;
+    item.comments.slice(-2).forEach(c => {
+      message += `- _${c.text}_\n`;
+    });
+  }
+
+  return message;
+};
+
+/**
  * Formata um relatório para o padrão de mensagem do WhatsApp solicitado.
- * Reconstroi seções caso o array de itens venha do histórico (sem marcadores de SECTION).
  */
 export const formatReportForWhatsApp = (report: Report, itemsWithMaybeSections?: ChecklistItem[]): string => {
   const dateStr = new Date(report.timestamp).toLocaleDateString('pt-BR');
-  const shiftHours = report.turno === 'MANHÃ' ? '06:14' : report.turno === 'TARDE' ? '14:22' : '22:06';
+  const timeStr = new Date(report.timestamp).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+  const turnoAjustado = report.turno.toUpperCase();
 
-  // Cabeçalho Principal conforme solicitado estritamente
-  let message = `${report.area.toUpperCase()}\n`;
-  message += `📅 DATA: ${dateStr}| TURNO:${shiftHours}| TURMA: ${report.turma} | OPERADOR: ${report.operator.toUpperCase()}\n\n`;
+  let message = `*${report.area.toUpperCase()}*\n`;
+  message += `📅 DATA: ${dateStr} | 🕒 HORA: ${timeStr}\n`;
+  message += `🔄 TURNO: ${turnoAjustado} | 👥 TURMA: ${report.turma} | 👷 OPERADOR: ${report.operator.toUpperCase()}\n\n`;
 
-  // Reconstrução de seções se estivermos visualizando do histórico
-  let itemsToFormat = itemsWithMaybeSections || report.items;
-  
-  if (itemsToFormat.length > 0 && !itemsToFormat.some(i => i.label.startsWith('SECTION:'))) {
+  let itemsToFormat: ChecklistItem[] = [];
+
+  if (itemsWithMaybeSections && itemsWithMaybeSections.some(i => i.label.startsWith('SECTION:'))) {
+    itemsToFormat = itemsWithMaybeSections;
+  } else {
     const template = CHECKLIST_TEMPLATES[report.area] || [];
-    const reconstructed: ChecklistItem[] = [];
+    let itemPointer = 0;
     
     template.forEach((templateLabel, idx) => {
       if (templateLabel.startsWith('SECTION:')) {
-        reconstructed.push({ id: `sec-${idx}`, label: templateLabel, status: 'ok' });
+        itemsToFormat.push({ id: `sec-${idx}`, label: templateLabel, status: 'ok' });
       } else {
-        const found = report.items.find(i => i.label === templateLabel);
-        if (found) reconstructed.push(found);
+        if (report.items[itemPointer]) {
+          itemsToFormat.push(report.items[itemPointer]);
+          itemPointer++;
+        }
       }
     });
-    itemsToFormat = reconstructed;
   }
 
-  itemsToFormat.forEach(item => {
+  let isSectionDisabled = false;
+
+  itemsToFormat.forEach((item, index) => {
     if (item.label.startsWith('SECTION:')) {
       const sectionName = item.label.replace('SECTION:', '').trim();
-      message += `${sectionName}\n`;
+      message += `\n*${sectionName}*\n`;
+      isSectionDisabled = false; 
     } else {
+      if (item.label === 'ALIMENTANDO COLUNAS?') {
+        const isOff = item.status === 'fail';
+        const statusEmoji = isOff ? '🔴' : '🟢';
+        message += `${item.label} ${statusEmoji} ${isOff ? 'NÃO ALIMENTANDO (STANDBY)' : 'SIM (OPERANDO)'}\n`;
+        if (isOff) isSectionDisabled = true;
+        return;
+      }
+
+      if (isSectionDisabled) return;
+
       let statusEmoji = '';
       switch (item.status) {
         case 'ok': statusEmoji = '🟢'; break;
@@ -46,45 +125,79 @@ export const formatReportForWhatsApp = (report: Report, itemsWithMaybeSections?:
         default: statusEmoji = '⚪'; break;
       }
 
-      const isMeasurement = item.label.includes('(m³/h)') || item.label.includes('(Kpa)') || item.label.includes('(%)');
+      const labelLower = item.label.toLowerCase();
+      const isMeasurement = labelLower.includes('(m³/h)') || 
+                            labelLower.includes('(kpa)') || 
+                            labelLower.includes('(%)') || 
+                            labelLower.includes('(g/t)') || 
+                            labelLower.includes('(ppm)') || 
+                            labelLower.includes('(t/m³)') || 
+                            labelLower.includes('(l/min)') ||
+                            labelLower.includes('(tph)') ||
+                            labelLower.includes('(hz)');
       
-      if (isMeasurement) {
-        message += `${item.label}: ${item.observation || '---'}\n`;
+      const isTextInput = labelLower.includes('ply') || labelLower.includes('linhas') || labelLower.includes('nota');
+
+      if (isMeasurement || isTextInput) {
+        let suffix = '';
+        
+        if (isMeasurement) {
+          if (labelLower.includes('actual') || labelLower.includes('atual') || labelLower.includes('nível')) {
+            const nextItem = itemsToFormat[index + 1];
+            if (nextItem && nextItem.label.toLowerCase().includes('setpoint') && item.observation && nextItem.observation) {
+              if (parseFloat(item.observation) === parseFloat(nextItem.observation)) {
+                suffix = ' 🎯';
+              }
+            }
+          } else if (labelLower.includes('setpoint')) {
+            const prevItem = itemsToFormat[index - 1];
+            if (prevItem && (prevItem.label.toLowerCase().includes('actual') || prevItem.label.toLowerCase().includes('atual') || prevItem.label.toLowerCase().includes('nível')) && item.observation && prevItem.observation) {
+              if (parseFloat(item.observation) === parseFloat(prevItem.observation)) {
+                suffix = ' 🎯';
+              }
+            }
+          }
+        }
+
+        message += `${item.label}: ${item.observation || '---'}${suffix}\n`;
       } else {
-        // Formata anexando a observação diretamente após o emoji
-        const obsText = item.observation ? `${item.observation}` : '';
+        let obsText = '';
+        if (item.observation) {
+          const cleanObs = item.observation.trim();
+          const autoTexts = ['OK', 'RODANDO', 'SIM', 'STANDBY', 'NÃO', 'ABERTO', 'FECHADO', 'SEM RETORNO', 'COM RETORNO', 'NO lugar', 'Fora do lugar', 'BOM', 'TURVA', 'RUIM'];
+          
+          if (!autoTexts.includes(cleanObs)) {
+            obsText = `\n   └ 📝 _MOTIVO: ${cleanObs.toUpperCase()}_`;
+          } else {
+             obsText = ` ${cleanObs}`;
+          }
+        }
+        
         message += `${item.label} ${statusEmoji}${obsText}\n`;
       }
     }
   });
 
   if (report.generalObservations) {
-    message += `\n📝 OBSERVAÇÕES\n${report.generalObservations.toUpperCase()}\n`;
+    message += `\n📝 *PASSAGEM DE TURNO / OBSERVAÇÕES*\n${report.generalObservations.toUpperCase()}\n`;
   }
 
-  message += `\n📌 LEGENDA SCADA\n🟢 RODANDO | 🔴 PARADO | 🟡 STANDBY | ⚠️ ANOMALIA`;
+  message += `\n📌 *LEGENDA SCADA*\n🟢 RODANDO | 🔴 PARADO | 🟡 STANDBY | ⚠️ ANOMALIA`;
 
   return message;
 };
 
-/**
- * Abre o WhatsApp com a mensagem formatada.
- */
 export const shareToWhatsApp = (text: string) => {
   const url = `https://wa.me/?text=${encodeURIComponent(text)}`;
   window.open(url, '_blank');
 };
 
-/**
- * Copia o texto para a área de transferência.
- */
 export const copyToClipboard = async (text: string): Promise<boolean> => {
   try {
     if (navigator.clipboard && navigator.clipboard.writeText) {
       await navigator.clipboard.writeText(text);
       return true;
     } else {
-      // Fallback for older browsers or insecure contexts
       const textArea = document.createElement("textarea");
       textArea.value = text;
       document.body.appendChild(textArea);

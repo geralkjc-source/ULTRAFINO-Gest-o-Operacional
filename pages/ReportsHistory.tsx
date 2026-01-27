@@ -41,8 +41,8 @@ const ReportsHistory: React.FC<ReportsHistoryProps> = ({ reports, onAddItemComme
   const handleExportAll = () => {
     const dataToExport = reports.map(r => ({
       ID: r.id,
-      Data: new Date(r.timestamp).toLocaleDateString(),
-      Hora: new Date(r.timestamp).toLocaleTimeString(),
+      Data: new Date(r.timestamp).toLocaleDateString('pt-BR'),
+      Hora: new Date(r.timestamp).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
       Area: r.area,
       Operador: r.operator,
       Turma: r.turma,
@@ -69,9 +69,6 @@ const ReportsHistory: React.FC<ReportsHistoryProps> = ({ reports, onAddItemComme
 
   const handleWhatsAppShare = () => {
     if (selectedReport) {
-      // Nota: Como os cabeçalhos de seção não são salvos no array de 'items' do relatório,
-      // em uma implementação real ideal eles estariam presentes. 
-      // Aqui usamos os itens persistidos.
       const whatsappText = formatReportForWhatsApp(selectedReport, selectedReport.items);
       shareToWhatsApp(whatsappText);
     }
@@ -137,15 +134,14 @@ const ReportsHistory: React.FC<ReportsHistoryProps> = ({ reports, onAddItemComme
                   </div>
                   <div className="text-right flex items-center gap-6">
                     <div className="hidden sm:block">
-                      <div className="flex items-center gap-1.5 text-xs text-slate-500">
+                      <div className="flex items-center justify-end gap-1.5 text-xs text-slate-500">
                         <Calendar size={12} />
-                        {new Date(report.timestamp).toLocaleDateString()}
+                        {new Date(report.timestamp).toLocaleDateString('pt-BR')}
                       </div>
-                      <span className={`text-[10px] font-bold uppercase ${
-                        report.items.every(i => i.status !== 'fail' && i.status !== 'warning') ? 'text-emerald-600' : 'text-amber-600'
-                      }`}>
-                        {report.items.every(i => i.status !== 'fail' && i.status !== 'warning') ? 'Sem Falhas' : 'Com Observações'}
-                      </span>
+                      <div className="flex items-center justify-end gap-1.5 text-xs text-blue-500 font-black">
+                        <Clock size={12} />
+                        {new Date(report.timestamp).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                      </div>
                     </div>
                     <ArrowRight size={18} className="text-slate-300" />
                   </div>
@@ -167,7 +163,7 @@ const ReportsHistory: React.FC<ReportsHistoryProps> = ({ reports, onAddItemComme
                   <button onClick={() => setSelectedReport(null)} className="text-slate-400 hover:text-white"><X size={20} /></button>
                 </div>
                 <h3 className="text-xl font-bold">{selectedReport.area}</h3>
-                <p className="text-slate-400 text-xs mt-1">ID: {selectedReport.id}</p>
+                <p className="text-slate-400 text-[10px] font-black uppercase mt-1">Concluído em: {new Date(selectedReport.timestamp).toLocaleString('pt-BR')}</p>
               </div>
               <div className="p-6 space-y-6 max-h-[70vh] overflow-y-auto custom-scrollbar">
                 <div className="grid grid-cols-2 gap-4">
@@ -197,15 +193,10 @@ const ReportsHistory: React.FC<ReportsHistoryProps> = ({ reports, onAddItemComme
                              item.status === 'warning' ? <AlertCircle size={12} /> : <Minus size={12} />}
                           </div>
                           <span className="text-xs text-slate-700 flex-1">{item.label}</span>
-                          <button 
-                            onClick={(e) => { e.stopPropagation(); setActiveItemComment(activeItemComment === item.id ? null : item.id); }}
-                            className="text-slate-400 hover:text-blue-600 transition-colors opacity-0 group-hover:opacity-100 p-1"
-                          >
-                            <MessageSquare size={14} />
-                          </button>
+                          <span className="text-[10px] font-bold text-slate-400">{item.observation || ''}</span>
                         </div>
 
-                        {(activeItemComment === item.id || (item.comments && item.comments.length > 0)) && (
+                        {item.comments && item.comments.length > 0 && (
                           <div className="ml-6 pl-2 border-l-2 border-slate-100 space-y-2 py-1">
                             {item.comments?.map(c => (
                               <div key={c.id} className="text-[10px] bg-slate-50 p-2 rounded border border-slate-100">
@@ -213,25 +204,6 @@ const ReportsHistory: React.FC<ReportsHistoryProps> = ({ reports, onAddItemComme
                                 <p className="text-slate-500 mt-1">{c.text}</p>
                               </div>
                             ))}
-                            {activeItemComment === item.id && (
-                              <div className="flex gap-1 animate-in slide-in-from-top-1 duration-200">
-                                <input 
-                                  autoFocus
-                                  type="text" 
-                                  placeholder="Novo comentário..." 
-                                  className="flex-1 text-[10px] border border-slate-200 rounded px-2 py-1 outline-none focus:ring-1 focus:ring-blue-500"
-                                  value={newItemCommentText}
-                                  onChange={(e) => setNewItemCommentText(e.target.value)}
-                                  onKeyDown={(e) => e.key === 'Enter' && handleAddComment(item.id)}
-                                />
-                                <button 
-                                  onClick={() => handleAddComment(item.id)}
-                                  className="bg-blue-600 text-white p-1 rounded hover:bg-blue-700"
-                                >
-                                  <Send size={10} />
-                                </button>
-                              </div>
-                            )}
                           </div>
                         )}
                       </div>
@@ -252,7 +224,7 @@ const ReportsHistory: React.FC<ReportsHistoryProps> = ({ reports, onAddItemComme
                     className="flex items-center justify-center gap-2 bg-slate-100 text-slate-700 py-3 rounded-xl font-bold text-sm hover:bg-slate-200 transition-all border border-slate-200"
                   >
                     <Download size={18} />
-                    Baixar Excel
+                    Excel
                   </button>
                   <button 
                     onClick={handleWhatsAppShare}
