@@ -22,7 +22,7 @@ export const syncToGoogleSheets = async (
   reports: Report[], 
   pending: PendingItem[]
 ): Promise<SyncResponse> => {
-  if (!scriptUrl) return { success: false, message: "URL do Script não configurada." };
+  if (!scriptUrl) return { success: false, message: "URL não configurada." };
 
   try {
     const now = new Date();
@@ -38,9 +38,7 @@ export const syncToGoogleSheets = async (
         operador: (r.operator || 'N/A').toUpperCase(),
         turma: r.turma,
         turno: r.turno,
-        itens_falha: r.items
-          ? r.items.filter(i => i.status === 'fail' || i.status === 'warning').map(i => i.label).join(', ')
-          : '',
+        itens_falha: r.items ? r.items.filter(i => i.status === 'fail' || i.status === 'warning').map(i => i.label).join(', ') : '',
         obs: (r.generalObservations || '').toUpperCase()
       })),
       pending: pending.map(p => ({
@@ -55,7 +53,6 @@ export const syncToGoogleSheets = async (
       }))
     };
 
-    // Para Google Apps Script, usamos text/plain para evitar Preflight CORS (que o GAS não suporta bem)
     await fetch(scriptUrl, {
       method: 'POST',
       mode: 'no-cors', 
@@ -63,19 +60,20 @@ export const syncToGoogleSheets = async (
       body: JSON.stringify(payload),
     });
 
-    return { success: true, message: "Transmitido com sucesso!" };
+    return { success: true, message: "Sincronizado!" };
   } catch (error) {
-    console.error("Erro Sync:", error);
-    return { success: false, message: "Erro de conexão com a planilha." };
+    return { success: false, message: "Erro de conexão." };
   }
 };
 
 export const fetchCloudItems = async (scriptUrl: string): Promise<PendingItem[]> => {
-  if (!scriptUrl) return [];
+  if (!scriptUrl || scriptUrl === DEFAULT_SCRIPT_URL) return [];
   try {
     const url = `${scriptUrl}?action=getPendencies&t=${Date.now()}`;
     const response = await fetch(url);
+    if (!response.ok) return [];
     const text = await response.text();
+    // Validação básica se é um JSON de array
     if (!text.trim().startsWith('[')) return [];
     const data = JSON.parse(text);
     return data.map((item: any, idx: number) => ({
@@ -92,16 +90,20 @@ export const fetchCloudItems = async (scriptUrl: string): Promise<PendingItem[]>
       turma: 'A' 
     }));
   } catch (error) {
+    console.error("Cloud Fetch Error:", error);
     return [];
   }
 };
 
 export const fetchCloudData = async (scriptUrl: string): Promise<CloudStats | null> => {
-  if (!scriptUrl) return null;
+  if (!scriptUrl || scriptUrl === DEFAULT_SCRIPT_URL) return null;
   try {
     const response = await fetch(`${scriptUrl}?action=getStats&t=${Date.now()}`);
     if (!response.ok) return null;
-    return await response.json();
+    const text = await response.text();
+    // Se não começar com {, não é JSON válido
+    if (!text.trim().startsWith('{')) return null;
+    return JSON.parse(text);
   } catch (error) {
     return null;
   }
