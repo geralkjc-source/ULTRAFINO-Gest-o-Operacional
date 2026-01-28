@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   Cloud, 
   CloudOff, 
@@ -10,13 +10,22 @@ import {
   Clock,
   ExternalLink,
   ChevronRight,
-  Server,
-  ClipboardCheck,
   Mail,
   Lock,
-  ArrowUpRight
+  Unlock,
+  ArrowUpRight,
+  Settings2,
+  Info,
+  Copy,
+  RotateCcw,
+  FileDown,
+  ClipboardCheck,
+  CalendarDays,
+  Undo2
 } from 'lucide-react';
 import { Report, PendingItem } from '../types';
+import { syncToGoogleSheets, DEFAULT_SCRIPT_URL, MASTER_SHEET_URL } from '../services/googleSync';
+import { exportMasterToExcel } from '../services/excelExport';
 
 interface SyncDashboardProps {
   reports: Report[];
@@ -24,194 +33,373 @@ interface SyncDashboardProps {
   onSyncSuccess: (reportIds: string[], pendingIds: string[]) => void;
 }
 
+const ADMIN_PASSWORD = 'ULTRAADMIN'; 
+
 const SyncDashboard: React.FC<SyncDashboardProps> = ({ reports, pendingItems, onSyncSuccess }) => {
   const [isSyncing, setIsSyncing] = useState(false);
-  const [progress, setProgress] = useState(0);
+  const [scriptUrl, setScriptUrl] = useState(localStorage.getItem('google_apps_script_url') || DEFAULT_SCRIPT_URL);
+  const [showConfig, setShowConfig] = useState(false);
+  const [syncStatus, setSyncStatus] = useState<{ type: 'success' | 'error', msg: string } | null>(null);
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [passwordAttempt, setPasswordAttempt] = useState('');
+  const [configPasswordAttempt, setConfigPasswordAttempt] = useState('');
+  const [passError, setPassError] = useState(false);
+  const [configPassError, setConfigPassError] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
+
+  const currentMonthName = new Date().toLocaleString('pt-BR', { month: 'long', year: 'numeric' }).toUpperCase();
+  const currentMonthRef = `${(new Date().getMonth() + 1).toString().padStart(2, '0')}_${new Date().getFullYear()}`;
 
   const unsyncedReports = reports.filter(r => !r.synced);
   const unsyncedPending = pendingItems.filter(p => !p.synced);
   const totalUnsynced = unsyncedReports.length + unsyncedPending.length;
 
-  const handleSync = () => {
-    if (totalUnsynced === 0) return;
-    
-    setIsSyncing(true);
-    setProgress(0);
+  useEffect(() => {
+    localStorage.setItem('google_apps_script_url', scriptUrl);
+  }, [scriptUrl]);
 
-    // Simulação de Sincronização Segura para geralkjc@gmail.com
-    const interval = setInterval(() => {
-      setProgress(prev => {
-        if (prev >= 100) {
-          clearInterval(interval);
-          onSyncSuccess(
-            unsyncedReports.map(r => r.id),
-            unsyncedPending.map(p => p.id)
-          );
-          setIsSyncing(false);
-          return 100;
-        }
-        return prev + 2;
-      });
-    }, 50);
+  const handleSync = async () => {
+    if (totalUnsynced === 0) return;
+    setIsSyncing(true);
+    setSyncStatus(null);
+    const result = await syncToGoogleSheets(scriptUrl, unsyncedReports, unsyncedPending);
+    
+    if (result.success) {
+      setTimeout(() => {
+        onSyncSuccess(unsyncedReports.map(r => r.id), unsyncedPending.map(p => p.id));
+        setIsSyncing(false);
+        setSyncStatus({ type: 'success', msg: `Sincronização Enviada!` });
+      }, 500);
+    } else {
+      setIsSyncing(false);
+      setSyncStatus({ type: 'error', msg: result.message });
+    }
   };
+
+  const handleResetUrl = () => {
+    if (confirm("Deseja restaurar a URL padrão?")) {
+      setScriptUrl(DEFAULT_SCRIPT_URL);
+      localStorage.setItem('google_apps_script_url', DEFAULT_SCRIPT_URL);
+    }
+  };
+
+  const handleUnlockConfig = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (configPasswordAttempt === ADMIN_PASSWORD) {
+      setIsAdmin(true);
+      setConfigPassError(false);
+    } else {
+      setConfigPassError(true);
+      setTimeout(() => setConfigPassError(false), 2000);
+    }
+  };
+
+  const handleDownloadMaster = () => {
+    setIsExporting(true);
+    setTimeout(() => {
+      exportMasterToExcel(reports, pendingItems, `MASTER_ULTRAFINO_${currentMonthRef}`);
+      setIsExporting(false);
+    }, 1000);
+  };
+
+  const handleUnlockMaster = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (passwordAttempt === ADMIN_PASSWORD) {
+      setIsAdmin(true);
+      setPassError(false);
+    } else {
+      setPassError(true);
+      setTimeout(() => setPassError(false), 2000);
+    }
+  };
+
+  const appsScriptTemplate = `/**
+ * PLATAFORMA ULTRAFINO - BACKEND GOOGLE SHEETS v4.5 (ULTRA-SYNC FINAL)
+ * Este script gerencia a sincronização de relatórios mensais e baixa automática de pendências.
+ */
+
+function doPost(e) {
+  var data;
+  try {
+    data = JSON.parse(e.postData.contents);
+  } catch (err) {
+    return ContentService.createTextOutput("Erro no processamento: " + err.toString());
+  }
+  
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var monthRef = data.mes_referencia || "Geral";
+  var nameRel = "REL_" + monthRef;
+  var namePend = "PEND_" + monthRef;
+  
+  var sheetReports = ss.getSheetByName(nameRel) || ss.insertSheet(nameRel);
+  var sheetPending = ss.getSheetByName(namePend) || ss.insertSheet(namePend);
+  
+  // 1. PROCESSAMENTO DE RELATÓRIOS (REL_MM_YYYY)
+  if (sheetReports.getLastRow() == 0) {
+    sheetReports.appendRow(["Data", "Hora", "Área", "Operador", "Turma", "Turno", "Itens com Falha", "Observações Gerais"]);
+    sheetReports.getRange(1, 1, 1, 8).setBackground("#0f172a").setFontColor("#FFFFFF").setFontWeight("bold");
+    sheetReports.setFrozenRows(1);
+  }
+  
+  if (data.reports && data.reports.length > 0) {
+    data.reports.forEach(function(r) { 
+      sheetReports.appendRow([
+        r.data, 
+        r.hora, 
+        r.area, 
+        r.operador.toUpperCase(), 
+        r.turma, 
+        r.turno, 
+        r.itens_falha, 
+        r.obs.toUpperCase()
+      ]); 
+    });
+  }
+  
+  // 2. PROCESSAMENTO DE PENDÊNCIAS (UPSERT POR TAG)
+  if (sheetPending.getLastRow() == 0) {
+    sheetPending.appendRow(["Tag", "Área", "Descrição", "Prioridade", "Status", "Operador Origem", "Resolvido Por", "Data Reporte"]);
+    sheetPending.getRange(1, 1, 1, 8).setBackground("#1e293b").setFontColor("#FFFFFF").setFontWeight("bold");
+    sheetPending.setFrozenRows(1);
+  }
+  
+  if (data.pending && data.pending.length > 0) {
+    var range = sheetPending.getDataRange();
+    var values = range.getValues();
+    
+    data.pending.forEach(function(p) { 
+      var targetRow = -1;
+      var tagInput = p.tag.toString().trim().toUpperCase();
+      
+      // Procura se a TAG já existe na planilha para atualizar em vez de criar duplicada
+      for (var i = 1; i < values.length; i++) {
+        if (values[i][0].toString().trim().toUpperCase() === tagInput) {
+          targetRow = i + 1;
+          break;
+        }
+      }
+      
+      if (targetRow > -1) {
+        // ATUALIZAÇÃO: Se a TAG existe, atualiza Status e Operador de Resolução
+        sheetPending.getRange(targetRow, 5).setValue(p.status.toUpperCase());
+        sheetPending.getRange(targetRow, 7).setValue(p.operador_resolucao.toUpperCase());
+        
+        // Estética: Cores baseadas no novo status
+        if (p.status.toUpperCase() === "RESOLVIDO") {
+          sheetPending.getRange(targetRow, 1, 1, 8).setFontColor("#94a3b8");
+          sheetPending.getRange(targetRow, 5).setBackground("#dcfce7").setFontColor("#166534");
+        } else {
+          sheetPending.getRange(targetRow, 1, 1, 8).setFontColor("#000000");
+          sheetPending.getRange(targetRow, 5).setBackground("#fef9c3").setFontColor("#854d0e");
+        }
+      } else {
+        // INSERÇÃO: Se a TAG é nova, adiciona linha
+        sheetPending.appendRow([
+          p.tag.toUpperCase(), 
+          p.area, 
+          p.descricao.toUpperCase(), 
+          p.prioridade.toUpperCase(), 
+          p.status.toUpperCase(), 
+          p.operador_origem.toUpperCase(), 
+          p.operador_resolucao.toUpperCase(), 
+          p.data
+        ]);
+        
+        var newRow = sheetPending.getLastRow();
+        if (p.prioridade.toUpperCase() === "ALTA") {
+          sheetPending.getRange(newRow, 4).setBackground("#fee2e2").setFontColor("#991b1b");
+        }
+      }
+    });
+  }
+  
+  return ContentService.createTextOutput("Sincronismo v4.5 OK").setMimeType(ContentService.MimeType.TEXT);
+}
+
+function doGet(e) {
+  var action = e.parameter.action;
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  
+  if (action === "getPendencies") {
+    var allPendencies = [];
+    var sheets = ss.getSheets();
+    
+    sheets.forEach(function(sheet) {
+      if (sheet.getName().indexOf("PEND_") === 0) {
+        var data = sheet.getDataRange().getValues();
+        for (var i = 1; i < data.length; i++) {
+          if (data[i][0]) {
+            allPendencies.push({
+              tag: data[i][0],
+              area: data[i][1],
+              descricao: data[i][2],
+              prioridade: data[i][3],
+              status: data[i][4],
+              operador_origem: data[i][5],
+              operador_resolucao: data[i][6],
+              data: data[i][7]
+            });
+          }
+        }
+      }
+    });
+    return ContentService.createTextOutput(JSON.stringify(allPendencies)).setMimeType(ContentService.MimeType.JSON);
+  }
+  
+  return ContentService.createTextOutput(JSON.stringify({status: "Online", v: "4.5"})).setMimeType(ContentService.MimeType.JSON);
+}`;
 
   return (
     <div className="max-w-4xl mx-auto space-y-8 animate-in fade-in duration-500 pb-12">
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
-          <h1 className="text-3xl font-black text-slate-900 tracking-tighter uppercase">Nuvem Operacional</h1>
-          <p className="text-slate-500 font-bold uppercase text-[10px] tracking-widest mt-1">Sincronização mestre de dados industriais</p>
+          <h1 className="text-3xl font-black text-slate-900 tracking-tighter uppercase">Sincronismo</h1>
+          <p className="text-slate-500 font-bold uppercase text-[10px] tracking-widest mt-1">Status da Nuvem</p>
         </div>
-        <div className="flex items-center gap-4">
-          <div className="flex items-center gap-2 px-3 py-1.5 bg-slate-100 border border-slate-200 rounded-lg text-slate-600 font-black text-[10px] uppercase">
-            <Mail size={14} className="text-blue-500" /> geralkjc@gmail.com
-          </div>
-          <div className="flex items-center gap-2 px-3 py-1.5 bg-emerald-50 border border-emerald-100 rounded-lg text-emerald-600 font-black text-[10px] uppercase">
-            <Server size={14} /> Drive Conectado
-          </div>
+        <div className="flex flex-wrap gap-2">
+          <button onClick={() => setShowConfig(!showConfig)} className={`flex items-center gap-2 px-3 py-1.5 rounded-lg font-black text-[10px] uppercase transition-all ${showConfig ? 'bg-blue-600 text-white' : 'bg-slate-900 text-white hover:bg-slate-800'}`}>
+            <Settings2 size={14} /> {isAdmin ? 'Configurações' : 'Acesso Reservado'}
+          </button>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <div className="bg-white p-8 rounded-3xl border-2 border-slate-100 shadow-sm space-y-6 flex flex-col justify-center relative overflow-hidden">
-          {isSyncing && (
-             <div className="absolute top-0 left-0 w-full h-1 bg-blue-100">
-                <div 
-                  className="h-full bg-blue-600 transition-all duration-300" 
-                  style={{ width: `${progress}%` }}
+      {showConfig && (
+        <div className="bg-white p-8 rounded-3xl border-2 border-blue-100 shadow-2xl space-y-6 animate-in slide-in-from-top-4 duration-300">
+          {!isAdmin ? (
+            <div className="py-8 text-center space-y-6">
+              <div className="w-16 h-16 bg-blue-50 text-blue-600 rounded-full flex items-center justify-center mx-auto mb-4">
+                <Lock size={32} />
+              </div>
+              <div className="space-y-2">
+                <h3 className="text-xl font-black text-slate-900 uppercase">Configurações de Nuvem</h3>
+                <p className="text-slate-500 text-xs font-bold uppercase tracking-wider">Insira a senha mestra para gerenciar o Webhook</p>
+              </div>
+              <form onSubmit={handleUnlockConfig} className="max-w-xs mx-auto space-y-4">
+                <input 
+                  type="password" 
+                  autoFocus
+                  placeholder="Senha Admin..." 
+                  value={configPasswordAttempt} 
+                  onChange={(e) => setConfigPasswordAttempt(e.target.value)} 
+                  className={`w-full bg-slate-50 border ${configPassError ? 'border-red-500 animate-shake' : 'border-slate-200'} rounded-xl px-4 py-3 text-center font-black outline-none focus:ring-2 focus:ring-blue-500`} 
                 />
-             </div>
+                <button type="submit" className="w-full py-3 bg-blue-600 text-white rounded-xl font-black uppercase text-xs shadow-lg shadow-blue-600/20">Desbloquear</button>
+              </form>
+            </div>
+          ) : (
+            <>
+              <div className="flex items-start gap-4">
+                <div className="p-3 bg-blue-50 text-blue-600 rounded-xl"><Unlock size={24} /></div>
+                <div className="flex-1">
+                  <h3 className="font-black text-slate-900 uppercase text-sm">Configuração Técnica (v4.5)</h3>
+                  <p className="text-slate-500 text-xs mt-1 font-medium italic">O script deve ser publicado como "Qualquer pessoa" para que os relatórios mensais funcionem.</p>
+                </div>
+              </div>
+              <div className="space-y-4 animate-in fade-in duration-500">
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">URL de Sincronização (Ativo)</label>
+                    <button 
+                      onClick={handleResetUrl}
+                      className="flex items-center gap-1 text-[9px] font-black text-blue-600 uppercase hover:underline"
+                    >
+                      <Undo2 size={12} /> Restaurar Padrão
+                    </button>
+                  </div>
+                  <input 
+                    type="text" 
+                    value={scriptUrl} 
+                    onChange={(e) => setScriptUrl(e.target.value)}
+                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl font-bold text-[10px] text-blue-600 outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+                 <div className="bg-slate-900 text-white p-6 rounded-2xl border border-slate-800">
+                    <div className="flex justify-between items-center mb-4">
+                      <span className="text-[10px] font-black uppercase text-slate-400 tracking-widest">Script v4.5 (Novo)</span>
+                      <button onClick={() => navigator.clipboard.writeText(appsScriptTemplate)} className="bg-white/5 hover:bg-white/10 px-3 py-1 rounded text-blue-400 text-[10px] font-bold uppercase flex items-center gap-1">
+                        <Copy size={12} /> Copiar Código
+                      </button>
+                    </div>
+                    <pre className="text-[9px] font-mono overflow-x-auto max-h-40 text-slate-400 custom-scrollbar">{appsScriptTemplate}</pre>
+                 </div>
+                 <div className="p-4 bg-emerald-50 rounded-xl border border-emerald-100 flex items-start gap-3">
+                   <div className="bg-emerald-500 text-white p-1 rounded">
+                    <CheckCircle2 size={14} />
+                   </div>
+                   <p className="text-[10px] font-bold text-emerald-700 leading-relaxed">
+                     REL_01_2026 e PEND_01_2026: Este script v4.5 garante que as abas mensais sejam criadas automaticamente e que as baixas de TAG funcionem.
+                   </p>
+                 </div>
+              </div>
+              <div className="pt-4 border-t border-slate-100">
+                <button onClick={() => setShowConfig(false)} className="w-full py-3 bg-slate-900 text-white rounded-xl font-black uppercase text-xs tracking-widest hover:bg-slate-800 transition-colors">Salvar e Sair</button>
+              </div>
+            </>
           )}
-          
+        </div>
+      )}
+
+      {syncStatus && (
+        <div className={`p-4 rounded-2xl flex items-center gap-3 animate-bounce ${syncStatus.type === 'success' ? 'bg-emerald-50 border border-emerald-100 text-emerald-700' : 'bg-red-50 border border-red-100 text-red-700'}`}>
+          {syncStatus.type === 'success' ? <CheckCircle2 size={20} /> : <AlertCircle size={20} />}
+          <span className="text-xs font-black uppercase tracking-tight">{syncStatus.msg}</span>
+        </div>
+      )}
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div className="bg-white p-8 rounded-3xl border-2 border-slate-100 shadow-sm space-y-6 relative overflow-hidden">
           <div className="flex items-center gap-4">
-            <div className={`p-4 rounded-2xl transition-all duration-500 ${totalUnsynced > 0 ? 'bg-amber-50 text-amber-500' : 'bg-emerald-50 text-emerald-500'}`}>
-              {totalUnsynced > 0 ? (
-                isSyncing ? <RefreshCw size={32} className="animate-spin" /> : <CloudOff size={32} />
-              ) : <Cloud size={32} />}
+            <div className={`p-4 rounded-2xl ${totalUnsynced > 0 ? 'bg-amber-50 text-amber-500' : 'bg-emerald-50 text-emerald-500'}`}>
+              {totalUnsynced > 0 ? (isSyncing ? <RefreshCw size={32} className="animate-spin" /> : <CloudOff size={32} />) : <Cloud size={32} />}
             </div>
             <div>
-              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Estado da Sincronização</p>
-              <h2 className="text-2xl font-black text-slate-800 uppercase">
-                {totalUnsynced === 0 ? 'Base Atualizada' : `${totalUnsynced} Pendentes`}
+              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Sincronismo Local</p>
+              <h2 className="text-2xl font-black text-slate-800 uppercase tracking-tighter">
+                {totalUnsynced === 0 ? 'Tudo Atualizado' : `${totalUnsynced} Pendentes`}
               </h2>
             </div>
           </div>
-
-          <button
-            onClick={handleSync}
-            disabled={isSyncing || totalUnsynced === 0}
-            className={`w-full py-5 rounded-2xl font-black uppercase tracking-widest flex items-center justify-center gap-3 transition-all shadow-xl ${
-              isSyncing ? 'bg-slate-900 text-white' : 
-              totalUnsynced === 0 ? 'bg-slate-50 text-slate-400 cursor-not-allowed border border-slate-100' :
-              'bg-blue-600 text-white shadow-blue-600/20 hover:bg-blue-700 active:scale-95'
-            }`}
-          >
-            {isSyncing ? (
-              <>
-                <RefreshCw size={20} className="animate-spin" />
-                <span>Enviando para Drive... {progress}%</span>
-              </>
-            ) : (
-              <>
-                <Cloud size={20} />
-                <span>{totalUnsynced === 0 ? 'Nuvem em Dia' : 'Sincronizar com Drive'}</span>
-              </>
-            )}
+          <button onClick={handleSync} disabled={isSyncing || totalUnsynced === 0} className={`w-full py-5 rounded-2xl font-black uppercase tracking-widest flex items-center justify-center gap-3 transition-all ${isSyncing ? 'bg-slate-900 text-white' : totalUnsynced === 0 ? 'bg-slate-50 text-slate-400 cursor-not-allowed border border-slate-100' : 'bg-blue-600 text-white shadow-xl hover:bg-blue-700 active:scale-95'}`}>
+            {isSyncing ? <RefreshCw size={20} className="animate-spin" /> : <Cloud size={20} />}
+            <span>{isSyncing ? 'Transmitindo...' : `Enviar para Nuvem`}</span>
           </button>
-
-          <p className="text-[9px] text-center text-slate-400 font-bold uppercase tracking-tighter">
-            <Lock size={10} className="inline mr-1" /> Criptografia de ponta a ponta ativa para geralkjc@gmail.com
-          </p>
         </div>
 
-        <div className="bg-slate-900 p-8 rounded-3xl text-white shadow-xl flex flex-col justify-between relative overflow-hidden group">
-          <div className="absolute -top-10 -right-10 opacity-10 group-hover:scale-110 transition-transform duration-700">
-            <Database size={160} />
-          </div>
-          
-          <div className="space-y-4">
+        <div className="bg-slate-900 p-8 rounded-3xl text-white shadow-xl relative overflow-hidden group">
+          <div className="absolute -top-10 -right-10 opacity-10 group-hover:scale-110 transition-transform duration-700"><Database size={160} /></div>
+          <div className="space-y-4 relative z-10">
             <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2 text-blue-400">
-                <ExternalLink size={18} />
-                <span className="text-[10px] font-black uppercase tracking-widest">Planilha Mestre Ativa</span>
-              </div>
-              <a 
-                href="https://sheets.google.com" 
-                target="_blank" 
-                rel="noopener noreferrer"
-                className="bg-white/10 hover:bg-white/20 p-2 rounded-lg transition-colors text-white"
-              >
-                <ArrowUpRight size={16} />
-              </a>
+              <div className="flex items-center gap-2 text-blue-400"><Database size={18} /><span className="text-[10px] font-black uppercase tracking-widest">Controle Admin</span></div>
+              {isAdmin && (
+                <div className="flex gap-2">
+                  <button onClick={handleDownloadMaster} disabled={isExporting} className="bg-emerald-600 hover:bg-emerald-700 p-2 rounded-lg text-white shadow-lg transition-transform active:scale-90"><FileDown size={18} /></button>
+                  <a href={MASTER_SHEET_URL} target="_blank" rel="noopener noreferrer" className="bg-blue-600 hover:bg-blue-700 p-2 rounded-lg text-white shadow-lg transition-transform active:scale-90"><ArrowUpRight size={18} /></a>
+                </div>
+              )}
             </div>
-            
-            <div className="bg-white/5 border border-white/10 p-4 rounded-xl space-y-2">
-              <p className="text-[10px] font-black text-slate-500 uppercase">Repositório de Dados</p>
-              <p className="text-xs font-medium text-slate-300 leading-relaxed italic">
-                Base centralizada no Google Drive sob a conta <span className="text-blue-400 font-bold">geralkjc@gmail.com</span>. 
-                Relatórios e checklists são injetados em tempo real após a sincronização manual.
-              </p>
+            <div className="bg-white/5 border border-white/10 p-4 rounded-xl">
+              {!isAdmin ? (
+                <form onSubmit={handleUnlockMaster} className="space-y-3">
+                  <div className="flex items-center gap-2"><Lock size={14} className="text-amber-500" /><p className="text-[10px] font-black text-slate-400 uppercase">Acesso Reservado</p></div>
+                  <div className="relative">
+                    <input type="password" placeholder="Senha Admin..." value={passwordAttempt} onChange={(e) => setPasswordAttempt(e.target.value)} className={`w-full bg-slate-800 border ${passError ? 'border-red-500 animate-shake' : 'border-slate-700'} rounded-lg px-3 py-2 text-xs font-bold focus:ring-1 focus:ring-blue-500 outline-none`} />
+                    <button type="submit" className="absolute right-1 top-1 bottom-1 px-3 bg-blue-600 rounded-md text-[10px] font-black uppercase">Acessar</button>
+                  </div>
+                </form>
+              ) : (
+                <div className="space-y-3 animate-in fade-in zoom-in duration-300">
+                   <div className="flex items-center gap-2 text-emerald-400"><Unlock size={14} /><p className="text-[10px] font-black uppercase tracking-widest">Base Liberada - Ref: {currentMonthRef}</p></div>
+                   <div className="grid grid-cols-2 gap-2">
+                    <button onClick={handleDownloadMaster} className="py-2 bg-emerald-600 rounded-lg text-[10px] font-black uppercase flex items-center justify-center gap-2 transition-transform active:scale-95"><FileDown size={14} /> XLSX</button>
+                    <button onClick={() => window.open(MASTER_SHEET_URL, '_blank')} className="py-2 bg-blue-600 rounded-lg text-[10px] font-black uppercase flex items-center justify-center gap-2 transition-transform active:scale-95"><ExternalLink size={14} /> Sheets</button>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
-          
           <div className="pt-6 border-t border-slate-800 mt-6 grid grid-cols-2 gap-4">
-            <div className="bg-slate-800/50 p-3 rounded-xl border border-slate-700/50">
-              <p className="text-[9px] font-black text-slate-500 uppercase">Checklists na Nuvem</p>
-              <p className="text-xl font-black text-blue-400">{reports.filter(r => r.synced).length}</p>
-            </div>
-            <div className="bg-slate-800/50 p-3 rounded-xl border border-slate-700/50">
-              <p className="text-[9px] font-black text-slate-500 uppercase">Anomalias na Nuvem</p>
-              <p className="text-xl font-black text-amber-400">{pendingItems.filter(p => p.synced).length}</p>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <div className="space-y-4">
-        <div className="flex items-center justify-between px-2">
-          <h3 className="text-xs font-black text-slate-400 uppercase tracking-[0.2em] flex items-center gap-2">
-            <Clock size={14} /> Fila de Transmissão Local
-          </h3>
-          <span className="text-[10px] font-black text-slate-400 uppercase">{totalUnsynced} itens restantes</span>
-        </div>
-        
-        <div className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden">
-          <div className="divide-y divide-slate-100">
-            {[...unsyncedReports, ...unsyncedPending].slice(0, 10).map((item, idx) => (
-              <div key={idx} className="p-5 flex items-center justify-between hover:bg-slate-50 transition-colors animate-in fade-in slide-in-from-left duration-300" style={{ animationDelay: `${idx * 50}ms` }}>
-                <div className="flex items-center gap-4">
-                  <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${'tag' in item ? 'bg-amber-50 text-amber-500' : 'bg-blue-50 text-blue-500'}`}>
-                    {'tag' in item ? <AlertCircle size={20} /> : <ClipboardCheck size={20} />}
-                  </div>
-                  <div>
-                    <h4 className="text-xs font-black text-slate-800 uppercase tracking-tight">
-                      {'tag' in item ? `PENDÊNCIA: ${item.tag}` : `RELATÓRIO: ${item.area}`}
-                    </h4>
-                    <p className="text-[10px] text-slate-500 font-bold uppercase">
-                      ID: {item.id.split('-')[1]} • Transmissão via geralkjc@gmail.com
-                    </p>
-                  </div>
-                </div>
-                <div className="flex items-center gap-3">
-                  <div className="flex flex-col items-end">
-                    <span className="text-[9px] font-black px-2 py-1 bg-amber-100 text-amber-700 rounded-md uppercase">Offline</span>
-                    <span className="text-[8px] text-slate-400 font-bold uppercase mt-1">{new Date(item.timestamp).toLocaleTimeString()}</span>
-                  </div>
-                  <ChevronRight size={16} className="text-slate-300" />
-                </div>
-              </div>
-            ))}
-            {totalUnsynced === 0 && (
-              <div className="p-16 text-center flex flex-col items-center justify-center space-y-4 bg-slate-50/30">
-                <div className="w-20 h-20 bg-emerald-50 text-emerald-500 rounded-full flex items-center justify-center shadow-inner">
-                  <CheckCircle2 size={40} />
-                </div>
-                <div className="space-y-1">
-                  <p className="text-slate-800 font-black uppercase text-xs tracking-widest">Base de Dados Integrada</p>
-                  <p className="text-slate-400 font-bold uppercase text-[9px] tracking-widest">Todos os registros estão seguros no Google Drive</p>
-                </div>
-              </div>
-            )}
+            <div className="text-center"><p className="text-[9px] font-black text-slate-500 uppercase tracking-widest">Referência</p><p className="text-sm font-black text-blue-400">{currentMonthName}</p></div>
+            <div className="text-center"><p className="text-[9px] font-black text-slate-500 uppercase tracking-widest">Sincronizados</p><p className="text-xl font-black text-emerald-400">{reports.filter(r => r.synced).length + pendingItems.filter(p => p.synced).length}</p></div>
           </div>
         </div>
       </div>

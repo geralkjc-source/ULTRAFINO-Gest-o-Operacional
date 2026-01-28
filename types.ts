@@ -50,4 +50,6 @@ export interface PendingItem {
   turma: Turma;
   comments?: Comment[];
   synced?: boolean; // Controle de sincronização Google Drive
+  resolvedBy?: string; // Operador que resolveu a pendência
+  sourceReportId?: string; // ID do relatório que gerou esta pendência
 }

@@ -15,14 +15,17 @@ import {
   Settings,
   Cloud,
   CloudOff,
-  RefreshCw
+  RefreshCw,
+  PieChart
 } from 'lucide-react';
 import Dashboard from './pages/Dashboard';
 import ChecklistArea from './pages/ChecklistArea';
 import PendingList from './pages/PendingList';
 import ReportsHistory from './pages/ReportsHistory';
 import SyncDashboard from './pages/SyncDashboard';
+import Analytics from './pages/Analytics';
 import { Area, Report, PendingItem, Comment, ChecklistItem } from './types';
+import { syncToGoogleSheets, DEFAULT_SCRIPT_URL } from './services/googleSync';
 
 const VulcanLogo = ({ className = "" }: { className?: string }) => (
   <span className={`font-black tracking-tighter select-none ${className}`}>
@@ -34,6 +37,7 @@ const Sidebar = ({ isOpen, toggle, unsyncedCount }: { isOpen: boolean; toggle: (
   const location = useLocation();
   const menuItems = [
     { path: '/', label: 'Dashboard', icon: <LayoutDashboard size={20} /> },
+    { path: '/charts', label: 'Gráficos', icon: <PieChart size={20} /> },
     { path: '/pending', label: 'Pendências', icon: <AlertCircle size={20} /> },
     { path: '/history', label: 'Histórico', icon: <FileSpreadsheet size={20} /> },
     { 
@@ -175,7 +179,6 @@ const App: React.FC = () => {
     pendingItems.filter(p => !p.synced).length;
 
   const addReport = (report: Report) => {
-    // Todo novo reporte nasce não sincronizado
     const newReport = { ...report, synced: false };
     const updatedReports = [newReport, ...reports];
     setReports(updatedReports);
@@ -207,7 +210,8 @@ const App: React.FC = () => {
           operator: report.operator,
           turma: report.turma,
           comments: [],
-          synced: false // Pendência nova nasce não sincronizada
+          synced: false,
+          sourceReportId: report.id 
         });
       }
     });
@@ -219,11 +223,62 @@ const App: React.FC = () => {
     }
   };
 
-  const resolvePending = (id: string) => {
-    // Ao resolver, marcamos como não sincronizado para atualizar na nuvem
-    const updated = pendingItems.map(p => p.id === id ? { ...p, status: 'resolvido' as const, synced: false } : p);
-    setPendingItems(updated);
-    localStorage.setItem('ultrafino_pending', JSON.stringify(updated));
+  const resolvePending = async (id: string, operatorName?: string) => {
+    const resolvedBy = operatorName || 'Operador';
+    let updatedItem: PendingItem | undefined;
+
+    // 1. Atualiza lista local
+    const updatedPending = pendingItems.map(p => {
+      if (p.id === id) {
+        updatedItem = { 
+          ...p, 
+          status: 'resolvido' as const, 
+          synced: false, 
+          resolvedBy 
+        };
+        return updatedItem;
+      }
+      return p;
+    });
+
+    setPendingItems(updatedPending);
+    localStorage.setItem('ultrafino_pending', JSON.stringify(updatedPending));
+
+    // 2. Marcar como resolvido no relatório histórico se houver vínculo
+    if (updatedItem?.sourceReportId) {
+      const updatedReports = reports.map(r => {
+        if (r.id === updatedItem?.sourceReportId) {
+          return {
+            ...r,
+            items: r.items.map(item => {
+              if (item.label.toUpperCase().includes(updatedItem!.tag)) {
+                return { ...item, status: 'ok' as const };
+              }
+              return item;
+            })
+          };
+        }
+        return r;
+      });
+      setReports(updatedReports);
+      localStorage.setItem('ultrafino_reports', JSON.stringify(updatedReports));
+    }
+
+    // 3. Sincroniza IMEDIATAMENTE com a nuvem (VICE-VERSA)
+    const scriptUrl = localStorage.getItem('google_apps_script_url') || DEFAULT_SCRIPT_URL;
+    if (updatedItem && scriptUrl) {
+      try {
+        const result = await syncToGoogleSheets(scriptUrl, [], [updatedItem]);
+        if (result.success) {
+          // Se teve sucesso, marca como sincronizado
+          const finalPending = updatedPending.map(p => p.id === id ? { ...p, synced: true } : p);
+          setPendingItems(finalPending);
+          localStorage.setItem('ultrafino_pending', JSON.stringify(finalPending));
+        }
+      } catch (error) {
+        console.error("Falha no Sincronismo da Resolução:", error);
+      }
+    }
   };
 
   const addPendingComment = (pendingId: string, commentText: string) => {
@@ -262,6 +317,7 @@ const App: React.FC = () => {
           <div className="flex-1 p-6">
             <Routes>
               <Route path="/" element={<Dashboard reports={reports} pendingItems={pendingItems} />} />
+              <Route path="/charts" element={<Analytics reports={reports} pendingItems={pendingItems} />} />
               <Route 
                 path="/checklist/:areaName" 
                 element={<ChecklistArea onSaveReport={addReport} />} 

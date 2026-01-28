@@ -1,5 +1,5 @@
 
-import React from 'react';
+import React, { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { 
   CheckCircle2, 
@@ -13,8 +13,10 @@ import {
   Filter,
   Cloud,
   CloudOff,
-  // Add missing RefreshCw import
-  RefreshCw
+  RefreshCw,
+  Info,
+  Power,
+  RotateCw
 } from 'lucide-react';
 import { Report, PendingItem, Area } from '../types';
 
@@ -25,8 +27,7 @@ interface DashboardProps {
 
 const Dashboard: React.FC<DashboardProps> = ({ reports, pendingItems }) => {
   const navigate = useNavigate();
-  const openPending = pendingItems.filter(p => p.status === 'aberto');
-  const criticalPending = openPending.filter(p => p.priority === 'alta');
+
   const unsyncedCount = 
     reports.filter(r => !r.synced).length + 
     pendingItems.filter(p => !p.synced).length;
@@ -72,27 +73,11 @@ const Dashboard: React.FC<DashboardProps> = ({ reports, pendingItems }) => {
   };
 
   return (
-    <div className="space-y-10 pb-10">
+    <div className="space-y-8 pb-10">
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-black text-slate-900 tracking-tighter uppercase">Painel de Controle</h1>
-          <p className="text-slate-500 font-bold uppercase text-xs tracking-widest mt-1">Selecione uma área operacional para iniciar inspeção</p>
-        </div>
-        <div className="flex gap-4">
-          <div className="bg-white px-4 py-2 rounded-lg border border-slate-200 flex items-center gap-3">
-            <Activity size={18} className="text-blue-500" />
-            <div>
-              <p className="text-[9px] font-black text-slate-400 uppercase">Pendências</p>
-              <p className="text-sm font-bold text-slate-900">{openPending.length}</p>
-            </div>
-          </div>
-          <div className="bg-white px-4 py-2 rounded-lg border border-slate-200 flex items-center gap-3">
-            <AlertTriangle size={18} className="text-red-500" />
-            <div>
-              <p className="text-[9px] font-black text-slate-400 uppercase">Alertas</p>
-              <p className="text-sm font-bold text-slate-900">{criticalPending.length}</p>
-            </div>
-          </div>
+          <h1 className="text-3xl font-black text-slate-900 tracking-tighter uppercase">Início</h1>
+          <p className="text-slate-500 font-bold uppercase text-[10px] tracking-widest mt-1">Selecione uma área para iniciar o checklist</p>
         </div>
       </div>
 
@@ -123,7 +108,6 @@ const Dashboard: React.FC<DashboardProps> = ({ reports, pendingItems }) => {
           description="Filtros de lona DFP 2. Inspeção de sopragem e unidades hidráulicas."
         />
         
-        {/* Cloud Sync Status Card */}
         <button 
           onClick={() => navigate('/sync')}
           className={`p-6 rounded-2xl border-2 transition-all flex flex-col ${
