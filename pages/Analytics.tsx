@@ -168,7 +168,10 @@ const Analytics: React.FC<AnalyticsProps> = ({
       <div className="bg-slate-950 p-8 md:p-12 rounded-[3rem] shadow-2xl border-4 border-slate-900 relative overflow-hidden">
         <div className="relative z-10 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-6">
           {areaHealth.map(data => (
-            <AreaNode key={data.area} data={data} />
+            /* Fix: Use React.Fragment with key to avoid passing key to the component props which triggered the type error */
+            <React.Fragment key={data.area}>
+              <AreaNode data={data} />
+            </React.Fragment>
           ))}
         </div>
         
