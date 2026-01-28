@@ -164,29 +164,36 @@ const Header = ({ onToggleSidebar, unsyncedCount }: { onToggleSidebar: () => voi
 
 const App: React.FC = () => {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  // INICIALIZAÇÃO SEGURA COM ARRAY VAZIO []
   const [reports, setReports] = useState<Report[]>([]);
   const [pendingItems, setPendingItems] = useState<PendingItem[]>([]);
 
   useEffect(() => {
-    const savedReports = localStorage.getItem('ultrafino_reports');
-    const savedPending = localStorage.getItem('ultrafino_pending');
-    if (savedReports) setReports(JSON.parse(savedReports));
-    if (savedPending) setPendingItems(JSON.parse(savedPending));
+    try {
+      const savedReports = localStorage.getItem('ultrafino_reports');
+      const savedPending = localStorage.getItem('ultrafino_pending');
+      if (savedReports) setReports(JSON.parse(savedReports) || []);
+      if (savedPending) setPendingItems(JSON.parse(savedPending) || []);
+    } catch (e) {
+      console.error("Erro ao carregar dados locais", e);
+      setReports([]);
+      setPendingItems([]);
+    }
   }, []);
 
   const unsyncedCount = 
-    reports.filter(r => !r.synced).length + 
-    pendingItems.filter(p => !p.synced).length;
+    (reports || []).filter(r => !r.synced).length + 
+    (pendingItems || []).filter(p => !p.synced).length;
 
   const addReport = (report: Report) => {
     const newReport = { ...report, synced: false };
-    const updatedReports = [newReport, ...reports];
+    const updatedReports = [newReport, ...(reports || [])];
     setReports(updatedReports);
     localStorage.setItem('ultrafino_reports', JSON.stringify(updatedReports));
     
     const newPendingFromChecklist: PendingItem[] = [];
     
-    report.items.forEach((item, index) => {
+    (report.items || []).forEach((item, index) => {
       if (item.status === 'fail' || item.status === 'warning') {
         let finalTag = item.label;
 
@@ -217,7 +224,7 @@ const App: React.FC = () => {
     });
 
     if (newPendingFromChecklist.length > 0) {
-      const updatedPending = [...newPendingFromChecklist, ...pendingItems];
+      const updatedPending = [...newPendingFromChecklist, ...(pendingItems || [])];
       setPendingItems(updatedPending);
       localStorage.setItem('ultrafino_pending', JSON.stringify(updatedPending));
     }
@@ -227,8 +234,7 @@ const App: React.FC = () => {
     const resolvedBy = operatorName || 'Operador';
     let updatedItem: PendingItem | undefined;
 
-    // 1. Atualiza lista local
-    const updatedPending = pendingItems.map(p => {
+    const updatedPending = (pendingItems || []).map(p => {
       if (p.id === id) {
         updatedItem = { 
           ...p, 
@@ -244,13 +250,12 @@ const App: React.FC = () => {
     setPendingItems(updatedPending);
     localStorage.setItem('ultrafino_pending', JSON.stringify(updatedPending));
 
-    // 2. Marcar como resolvido no relatório histórico se houver vínculo
     if (updatedItem?.sourceReportId) {
-      const updatedReports = reports.map(r => {
+      const updatedReports = (reports || []).map(r => {
         if (r.id === updatedItem?.sourceReportId) {
           return {
             ...r,
-            items: r.items.map(item => {
+            items: (r.items || []).map(item => {
               if (item.label.toUpperCase().includes(updatedItem!.tag)) {
                 return { ...item, status: 'ok' as const };
               }
@@ -264,13 +269,11 @@ const App: React.FC = () => {
       localStorage.setItem('ultrafino_reports', JSON.stringify(updatedReports));
     }
 
-    // 3. Sincroniza IMEDIATAMENTE com a nuvem (VICE-VERSA)
     const scriptUrl = localStorage.getItem('google_apps_script_url') || DEFAULT_SCRIPT_URL;
     if (updatedItem && scriptUrl) {
       try {
         const result = await syncToGoogleSheets(scriptUrl, [], [updatedItem]);
         if (result.success) {
-          // Se teve sucesso, marca como sincronizado
           const finalPending = updatedPending.map(p => p.id === id ? { ...p, synced: true } : p);
           setPendingItems(finalPending);
           localStorage.setItem('ultrafino_pending', JSON.stringify(finalPending));
@@ -288,7 +291,7 @@ const App: React.FC = () => {
       author: 'Operador', 
       timestamp: Date.now()
     };
-    const updated = pendingItems.map(p => 
+    const updated = (pendingItems || []).map(p => 
       p.id === pendingId ? { ...p, comments: [...(p.comments || []), newComment], synced: false } : p
     );
     setPendingItems(updated);
@@ -296,8 +299,8 @@ const App: React.FC = () => {
   };
 
   const onSyncSuccess = (syncedReportIds: string[], syncedPendingIds: string[]) => {
-    const updatedReports = reports.map(r => syncedReportIds.includes(r.id) ? { ...r, synced: true } : r);
-    const updatedPending = pendingItems.map(p => syncedPendingIds.includes(p.id) ? { ...p, synced: true } : p);
+    const updatedReports = (reports || []).map(r => syncedReportIds.includes(r.id) ? { ...r, synced: true } : r);
+    const updatedPending = (pendingItems || []).map(p => syncedPendingIds.includes(p.id) ? { ...p, synced: true } : p);
     
     setReports(updatedReports);
     setPendingItems(updatedPending);

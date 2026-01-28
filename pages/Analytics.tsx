@@ -9,12 +9,10 @@ import {
   AlertCircle,
   Database,
   ArrowRight,
-  CalendarCheck,
   Zap,
   Droplets,
   Settings2,
   Filter,
-  AlertTriangle,
   CheckCircle2,
   Wifi,
   WifiOff
@@ -27,7 +25,7 @@ interface AnalyticsProps {
   pendingItems: PendingItem[];
 }
 
-const Analytics: React.FC<AnalyticsProps> = ({ reports, pendingItems }) => {
+const Analytics: React.FC<AnalyticsProps> = ({ reports = [], pendingItems = [] }) => {
   const navigate = useNavigate();
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [cloudStats, setCloudStats] = useState<CloudStats | null>(null);
@@ -36,55 +34,60 @@ const Analytics: React.FC<AnalyticsProps> = ({ reports, pendingItems }) => {
 
   const scriptUrl = localStorage.getItem('google_apps_script_url') || DEFAULT_SCRIPT_URL;
 
+  // Processamento ultra-defensivo dos dados para o Supervisório
   const areaHealth = useMemo(() => {
-    const today = new Date().toLocaleDateString('pt-BR');
-    const allPendingMap = new Map<string, PendingItem>();
-    
-    // Processamento seguro de itens da nuvem
-    if (Array.isArray(cloudPending)) {
-      cloudPending.forEach(cp => {
-        if (cp && cp.tag) allPendingMap.set(cp.tag.toUpperCase(), cp);
-      });
-    }
+    try {
+      const today = new Date().toLocaleDateString('pt-BR');
+      const allPendingMap = new Map<string, PendingItem>();
+      
+      const safeCloudPending = Array.isArray(cloudPending) ? cloudPending : [];
+      const safeLocalPending = Array.isArray(pendingItems) ? pendingItems : [];
+      const safeReports = Array.isArray(reports) ? reports : [];
 
-    // Processamento seguro de itens locais
-    if (Array.isArray(pendingItems)) {
-      pendingItems.forEach(lp => {
+      // Unificar dados da nuvem e locais por TAG (prioridade para a alteração mais recente)
+      safeCloudPending.forEach(cp => {
+        if (cp && cp.tag) allPendingMap.set(cp.tag.trim().toUpperCase(), cp);
+      });
+
+      safeLocalPending.forEach(lp => {
         if (lp && lp.tag) {
-          const tag = lp.tag.toUpperCase();
+          const tag = lp.tag.trim().toUpperCase();
           const existing = allPendingMap.get(tag);
+          // Se o local for mais novo ou estiver resolvido, ele manda na visualização
           if (!existing || lp.timestamp >= existing.timestamp || lp.status === 'resolvido') {
             allPendingMap.set(tag, lp);
           }
         }
       });
+
+      const combinedPendencies = Array.from(allPendingMap.values());
+
+      return Object.values(Area).map(area => {
+        const areaPendenciesOpen = combinedPendencies.filter(p => p.area === area && p.status === 'aberto');
+        const hasCritical = areaPendenciesOpen.some(p => p.priority === 'alta');
+        const hasAnomaly = areaPendenciesOpen.some(p => p.priority === 'media');
+
+        const reportedToday = safeReports.find(r => 
+          r && r.area === area && 
+          new Date(r.timestamp).toLocaleDateString('pt-BR') === today
+        );
+
+        let status: 'critical' | 'anomaly' | 'ok' | 'standby' = 'standby';
+        if (hasCritical) status = 'critical';
+        else if (hasAnomaly) status = 'anomaly';
+        else if (reportedToday) status = 'ok';
+
+        return {
+          area,
+          status,
+          pendenciesCount: areaPendenciesOpen.length,
+          lastUpdate: reportedToday ? new Date(reportedToday.timestamp).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : null
+        };
+      });
+    } catch (e) {
+      console.error("Erro no processamento Analytics:", e);
+      return [];
     }
-
-    const combinedPendencies = Array.from(allPendingMap.values());
-
-    return Object.values(Area).map(area => {
-      const areaPendenciesOpen = combinedPendencies.filter(p => p.area === area && p.status === 'aberto');
-      const hasCritical = areaPendenciesOpen.some(p => p.priority === 'alta');
-      const hasAnomaly = areaPendenciesOpen.some(p => p.priority === 'media');
-
-      const reportedToday = Array.isArray(reports) ? reports.find(r => 
-        r.area === area && 
-        new Date(r.timestamp).toLocaleDateString('pt-BR') === today
-      ) : null;
-
-      let status: 'critical' | 'anomaly' | 'ok' | 'standby' = 'standby';
-      if (hasCritical) status = 'critical';
-      else if (hasAnomaly) status = 'anomaly';
-      else if (reportedToday) status = 'ok';
-
-      return {
-        area,
-        status,
-        pendenciesCount: areaPendenciesOpen.length,
-        lastUpdate: reportedToday ? new Date(reportedToday.timestamp).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : null,
-        tags: areaPendenciesOpen.map(p => p.tag)
-      };
-    });
   }, [reports, pendingItems, cloudPending]);
 
   const statsSummary = useMemo(() => {
@@ -92,14 +95,16 @@ const Analytics: React.FC<AnalyticsProps> = ({ reports, pendingItems }) => {
     areaHealth.forEach(a => {
       if (counts[a.status] !== undefined) counts[a.status]++;
     });
-    return { ...counts, total: areaHealth.length };
+    return { ...counts, total: areaHealth.length || 1 };
   }, [areaHealth]);
 
   const handleRefresh = async () => {
-    if (scriptUrl === DEFAULT_SCRIPT_URL) {
+    // Se a URL for a padrão (vazia/exemplo), não tenta buscar na nuvem
+    if (!scriptUrl || scriptUrl === DEFAULT_SCRIPT_URL) {
       setLastUpdateSource('local');
       return;
     }
+
     setIsRefreshing(true);
     try {
       const [stats, items] = await Promise.all([
@@ -108,10 +113,14 @@ const Analytics: React.FC<AnalyticsProps> = ({ reports, pendingItems }) => {
       ]);
 
       if (stats) setCloudStats(stats);
-      if (Array.isArray(items)) setCloudPending(items);
-      
-      setLastUpdateSource('cloud');
+      if (Array.isArray(items)) {
+        setCloudPending(items);
+        setLastUpdateSource('cloud');
+      } else {
+        setLastUpdateSource('local');
+      }
     } catch (err) {
+      console.error("Falha ao sincronizar com a nuvem:", err);
       setLastUpdateSource('local');
     } finally {
       setIsRefreshing(false);
@@ -123,7 +132,7 @@ const Analytics: React.FC<AnalyticsProps> = ({ reports, pendingItems }) => {
   }, []);
 
   const AreaNode = ({ data }: { data: typeof areaHealth[0] }) => {
-    const icons = {
+    const icons: Record<string, React.ReactNode> = {
       [Area.HBF_C]: <Zap size={20} />,
       [Area.HBF_D]: <Zap size={20} />,
       [Area.BOMBEAMENTO]: <Droplets size={20} />,
@@ -176,7 +185,7 @@ const Analytics: React.FC<AnalyticsProps> = ({ reports, pendingItems }) => {
   };
 
   return (
-    <div className="max-w-7xl mx-auto space-y-8 pb-12">
+    <div className="max-w-7xl mx-auto space-y-8 pb-12 animate-in fade-in duration-500">
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
         <div>
           <h1 className="text-3xl font-black text-slate-900 tracking-tighter uppercase flex items-center gap-3">
@@ -187,7 +196,7 @@ const Analytics: React.FC<AnalyticsProps> = ({ reports, pendingItems }) => {
             <p className="text-slate-500 font-bold uppercase text-[10px] tracking-widest">Status Geral</p>
             <div className={`flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[9px] font-black uppercase ${lastUpdateSource === 'cloud' ? 'bg-emerald-100 text-emerald-600' : 'bg-slate-100 text-slate-500'}`}>
               {lastUpdateSource === 'cloud' ? <Wifi size={10} /> : <WifiOff size={10} />}
-              {lastUpdateSource === 'cloud' ? 'Planilha Ativa' : 'Base Local'}
+              {lastUpdateSource === 'cloud' ? 'Planilha Online' : 'Modo Offline'}
             </div>
           </div>
         </div>
@@ -199,23 +208,31 @@ const Analytics: React.FC<AnalyticsProps> = ({ reports, pendingItems }) => {
             className="flex items-center gap-2 px-6 py-3 bg-slate-900 text-white rounded-xl text-[10px] font-black uppercase hover:bg-slate-800 transition-all shadow-xl active:scale-95 disabled:opacity-50"
           >
             <RotateCw size={14} className={isRefreshing ? 'animate-spin' : ''} />
-            Atualizar Nuvem
+            {isRefreshing ? 'Buscando...' : 'Atualizar Nuvem'}
           </button>
         </div>
       </div>
 
       <div className="bg-slate-950 p-8 md:p-12 rounded-[3rem] shadow-2xl border-4 border-slate-900 relative overflow-hidden">
-        <div className="relative z-10 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-6">
-          {areaHealth.map(data => (
-            <AreaNode key={data.area} data={data} />
-          ))}
-        </div>
+        {areaHealth.length > 0 ? (
+          <div className="relative z-10 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-6">
+            {areaHealth.map(data => (
+              <AreaNode key={data.area} data={data} />
+            ))}
+          </div>
+        ) : (
+          <div className="py-20 text-center space-y-4 relative z-10">
+            <Database size={48} className="text-slate-800 mx-auto" />
+            <p className="text-slate-500 font-black uppercase text-xs tracking-widest">Nenhum dado de área disponível para processamento</p>
+          </div>
+        )}
+        
         <div className="mt-12 flex flex-col md:flex-row justify-between items-center gap-6 pt-8 border-t border-white/5 relative z-10">
           <div className="flex items-center gap-6">
             <div className="text-center">
               <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest mb-1">Saúde Global</p>
               <div className="text-2xl font-black text-blue-500">
-                {areaHealth.length > 0 ? Math.round((statsSummary.ok / areaHealth.length) * 100) : 0}%
+                {statsSummary.total > 0 ? Math.round((statsSummary.ok / statsSummary.total) * 100) : 0}%
               </div>
             </div>
           </div>
@@ -224,8 +241,8 @@ const Analytics: React.FC<AnalyticsProps> = ({ reports, pendingItems }) => {
               <Database size={18} />
             </div>
             <div>
-              <p className="text-[10px] font-black text-blue-400 uppercase tracking-widest">Master Sheets</p>
-              <p className="text-[10px] font-bold text-slate-400 uppercase">Monitoramento Ativo</p>
+              <p className="text-[10px] font-black text-blue-400 uppercase tracking-widest">Conectividade</p>
+              <p className="text-[10px] font-bold text-slate-400 uppercase">{lastUpdateSource === 'cloud' ? 'Sincronizado via Google' : 'Usando Banco Local'}</p>
             </div>
           </div>
         </div>

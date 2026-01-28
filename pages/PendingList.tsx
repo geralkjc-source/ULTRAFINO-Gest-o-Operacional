@@ -34,32 +34,36 @@ const PendingList: React.FC<PendingListProps> = ({ pendingItems, onResolve, onAd
   const [statusFilter, setStatusFilter] = useState<'aberto' | 'resolvido' | 'Tudo'>('aberto');
   const [isSyncing, setIsSyncing] = useState(false);
   const [cloudItems, setCloudItems] = useState<PendingItem[]>([]);
-  const [copyFeedback, setCopyFeedback] = useState<Record<string, boolean>>({});
   
   const [resolvingId, setResolvingId] = useState<string | null>(null);
   const [resolverName, setResolverName] = useState('');
 
   const scriptUrl = localStorage.getItem('google_apps_script_url') || DEFAULT_SCRIPT_URL;
 
-  // MESCLA DADOS: Local Resolve ganha de Nuvem Aberto
   const combinedItems = React.useMemo(() => {
     const map = new Map<string, PendingItem>();
     
-    // 1. Carrega da Nuvem
-    cloudItems.forEach(item => {
-      const key = item.tag.trim().toUpperCase();
-      if (key) map.set(key, item);
+    // Garantia de array
+    const safeCloud = Array.isArray(cloudItems) ? cloudItems : [];
+    const safeLocal = Array.isArray(pendingItems) ? pendingItems : [];
+
+    safeCloud.forEach(item => {
+      if (item && item.tag) {
+        const key = item.tag.trim().toUpperCase();
+        map.set(key, item);
+      }
     });
 
-    // 2. Sobrescreve com Local (Status RESOLVIDO local é soberano)
-    pendingItems.forEach(localItem => {
-      const key = localItem.tag.trim().toUpperCase();
-      const cloudItem = map.get(key);
+    safeLocal.forEach(localItem => {
+      if (localItem && localItem.tag) {
+        const key = localItem.tag.trim().toUpperCase();
+        const cloudItem = map.get(key);
 
-      if (localItem.status === 'resolvido') {
-        map.set(key, { ...(cloudItem || {}), ...localItem });
-      } else if (!cloudItem || localItem.timestamp > cloudItem.timestamp) {
-        map.set(key, localItem);
+        if (localItem.status === 'resolvido') {
+          map.set(key, { ...(cloudItem || {}), ...localItem });
+        } else if (!cloudItem || localItem.timestamp > cloudItem.timestamp) {
+          map.set(key, localItem);
+        }
       }
     });
 
@@ -75,16 +79,22 @@ const PendingList: React.FC<PendingListProps> = ({ pendingItems, onResolve, onAd
   });
 
   const handleSyncCloud = async () => {
+    if (!scriptUrl || scriptUrl === DEFAULT_SCRIPT_URL) return;
     setIsSyncing(true);
     try {
       const items = await fetchCloudItems(scriptUrl);
-      if (items.length > 0) setCloudItems(items);
-    } catch (e) { console.error(e); } finally { setIsSyncing(false); }
+      setCloudItems(Array.isArray(items) ? items : []);
+    } catch (e) { 
+      console.error(e); 
+      setCloudItems([]);
+    } finally { 
+      setIsSyncing(false); 
+    }
   };
 
   useEffect(() => {
     handleSyncCloud();
-    const interval = setInterval(handleSyncCloud, 30000); // 30s
+    const interval = setInterval(handleSyncCloud, 30000);
     return () => clearInterval(interval);
   }, []);
 
