@@ -25,14 +25,14 @@ interface PendingListProps {
   pendingItems: PendingItem[];
   onResolve: (id: string, operatorName?: string) => void;
   onAddComment: (id: string, text: string) => void;
+  onRefresh?: () => Promise<void>;
+  isRefreshing?: boolean;
 }
 
-const PendingList: React.FC<PendingListProps> = ({ pendingItems = [], onResolve }) => {
+const PendingList: React.FC<PendingListProps> = ({ pendingItems = [], onResolve, onRefresh, isRefreshing }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [areaFilter, setAreaFilter] = useState<string>('Tudo');
   const [statusFilter, setStatusFilter] = useState<'aberto' | 'resolvido' | 'Tudo'>('aberto');
-  const [isSyncing, setIsSyncing] = useState(false);
-  const [cloudItems, setCloudItems] = useState<PendingItem[]>([]);
   
   const [resolvingId, setResolvingId] = useState<string | null>(null);
   const [resolverName, setResolverName] = useState('');
@@ -42,35 +42,7 @@ const PendingList: React.FC<PendingListProps> = ({ pendingItems = [], onResolve 
   const [summaryNote, setSummaryNote] = useState('');
   const [copyFeedback, setCopyFeedback] = useState(false);
 
-  const scriptUrl = localStorage.getItem('google_apps_script_url') || DEFAULT_SCRIPT_URL;
-
-  const combinedItems = React.useMemo(() => {
-    const map = new Map<string, PendingItem>();
-    
-    const safeCloud = Array.isArray(cloudItems) ? cloudItems : [];
-    const safeLocal = Array.isArray(pendingItems) ? pendingItems : [];
-
-    safeCloud.forEach(item => {
-      if (item && item.tag) {
-        map.set(item.tag.trim().toUpperCase(), item);
-      }
-    });
-
-    safeLocal.forEach(localItem => {
-      if (localItem && localItem.tag) {
-        const key = localItem.tag.trim().toUpperCase();
-        const cloudItem = map.get(key);
-
-        if (localItem.status === 'resolvido' || !cloudItem || localItem.timestamp > (cloudItem.timestamp || 0)) {
-          map.set(key, { ...(cloudItem || {}), ...localItem });
-        }
-      }
-    });
-
-    return Array.from(map.values()).sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
-  }, [pendingItems, cloudItems]);
-
-  const filteredItems = combinedItems.filter(item => {
+  const filteredItems = pendingItems.filter(item => {
     if (!item) return false;
     const matchesSearch = (item.description || '').toLowerCase().includes(searchTerm.toLowerCase()) || 
                           (item.tag || '').toLowerCase().includes(searchTerm.toLowerCase());
@@ -78,25 +50,6 @@ const PendingList: React.FC<PendingListProps> = ({ pendingItems = [], onResolve 
     const matchesStatus = statusFilter === 'Tudo' || item.status === statusFilter;
     return matchesSearch && matchesArea && matchesStatus;
   });
-
-  const handleSyncCloud = async () => {
-    if (!scriptUrl || scriptUrl === DEFAULT_SCRIPT_URL) return;
-    setIsSyncing(true);
-    try {
-      const items = await fetchCloudItems(scriptUrl);
-      if (Array.isArray(items)) setCloudItems(items);
-    } catch (e) { 
-      setCloudItems([]);
-    } finally { 
-      setIsSyncing(false); 
-    }
-  };
-
-  useEffect(() => {
-    handleSyncCloud();
-    const interval = setInterval(handleSyncCloud, 60000);
-    return () => clearInterval(interval);
-  }, []);
 
   const handleExport = () => {
     const data = filteredItems.map(item => ({
@@ -127,7 +80,6 @@ const PendingList: React.FC<PendingListProps> = ({ pendingItems = [], onResolve 
       onResolve(resolvingId, resolverName.trim().toUpperCase());
       setResolvingId(null);
       setResolverName('');
-      setTimeout(handleSyncCloud, 1500);
     }
   };
 
@@ -224,9 +176,11 @@ const PendingList: React.FC<PendingListProps> = ({ pendingItems = [], onResolve 
           >
             <MessageCircle size={14} /> WhatsApp Resumo
           </button>
-          <button onClick={handleSyncCloud} disabled={isSyncing} className="bg-white text-slate-900 px-4 py-2 rounded-lg font-black text-[10px] uppercase border border-slate-200 shadow-sm hover:bg-slate-50">
-            <RotateCw size={14} className={isSyncing ? 'animate-spin' : ''} />
-          </button>
+          {onRefresh && (
+            <button onClick={onRefresh} disabled={isRefreshing} className="bg-white text-slate-900 px-4 py-2 rounded-lg font-black text-[10px] uppercase border border-slate-200 shadow-sm hover:bg-slate-50">
+              <RotateCw size={14} className={isRefreshing ? 'animate-spin' : ''} />
+            </button>
+          )}
           <button onClick={handleExport} className="bg-emerald-600 text-white px-4 py-2 rounded-lg font-black text-[10px] uppercase shadow-md">Exportar</button>
         </div>
       </div>

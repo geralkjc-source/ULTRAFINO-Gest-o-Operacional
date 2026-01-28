@@ -192,7 +192,7 @@ const App: React.FC = () => {
 
     setIsGlobalSyncing(true);
     try {
-      // 1. Puxar Pendências e Estatísticas em paralelo
+      // 1. Pull: Buscar Pendências e Estatísticas
       const [cloudItems, stats] = await Promise.all([
         fetchCloudItems(scriptUrl),
         fetchCloudData(scriptUrl)
@@ -200,21 +200,26 @@ const App: React.FC = () => {
       
       if (stats) setCloudStats(stats);
 
-      // 2. Mesclar Pendências
+      // 2. Mesclagem Inteligente (Bi-direcional)
       const map = new Map<string, PendingItem>();
       
-      // Carrega o que veio da nuvem
+      // Carrega o que veio da nuvem primeiro
       cloudItems.forEach(item => {
         if (item.tag) map.set(item.tag.trim().toUpperCase(), item);
       });
 
-      // Sobrescreve com o que temos local se for mais novo ou resolvido localmente
+      // Sobrescreve com o local se o local for mais recente ou se o local estiver resolvido (prioridade à ação)
       pendingItems.forEach(localItem => {
         if (localItem.tag) {
           const key = localItem.tag.trim().toUpperCase();
           const cloudItem = map.get(key);
-          if (!cloudItem || localItem.timestamp > cloudItem.timestamp || localItem.status === 'resolvido') {
-            map.set(key, localItem);
+          // Se o local for mais novo ou se local está resolvido mas nuvem ainda está aberto
+          const shouldUpdate = !cloudItem || 
+                               localItem.timestamp > (cloudItem.timestamp || 0) || 
+                               (localItem.status === 'resolvido' && cloudItem.status === 'aberto');
+          
+          if (shouldUpdate) {
+            map.set(key, { ...(cloudItem || {}), ...localItem, synced: false });
           }
         }
       });
@@ -224,7 +229,7 @@ const App: React.FC = () => {
       localStorage.setItem('ultrafino_pending', JSON.stringify(merged));
       setLastSyncSource('cloud');
 
-      // 3. Tentar enviar o que está pendente (Push)
+      // 3. Push: Enviar o que ainda está pendente localmente
       const unsyncedReports = reports.filter(r => !r.synced);
       const unsyncedPending = merged.filter(p => !p.synced);
 
@@ -240,7 +245,7 @@ const App: React.FC = () => {
         }
       }
     } catch (error) {
-      console.error("Erro na sincronização global:", error);
+      console.error("Erro na sincronização:", error);
       setLastSyncSource('local');
     } finally {
       setIsGlobalSyncing(false);
@@ -307,6 +312,7 @@ const App: React.FC = () => {
     setPendingItems(updatedPending);
     localStorage.setItem('ultrafino_pending', JSON.stringify(updatedPending));
     
+    // Sync imediato
     refreshDataFromCloud();
   };
 
@@ -354,7 +360,7 @@ const App: React.FC = () => {
                 } 
               />
               <Route path="/checklist/:areaName" element={<ChecklistArea onSaveReport={addReport} />} />
-              <Route path="/pending" element={<PendingList pendingItems={pendingItems} onResolve={resolvePending} onAddComment={() => {}} />} />
+              <Route path="/pending" element={<PendingList pendingItems={pendingItems} onResolve={resolvePending} onAddComment={() => {}} onRefresh={refreshDataFromCloud} isRefreshing={isGlobalSyncing} />} />
               <Route path="/history" element={<ReportsHistory reports={reports} onAddItemComment={() => {}} />} />
               <Route path="/sync" element={<SyncDashboard reports={reports} pendingItems={pendingItems} onSyncSuccess={onSyncSuccess} />} />
             </Routes>

@@ -114,8 +114,8 @@ const SyncDashboard: React.FC<SyncDashboardProps> = ({ reports, pendingItems, on
   };
 
   const appsScriptTemplate = `/**
- * PLATAFORMA ULTRAFINO - BACKEND GOOGLE SHEETS v4.5 (ULTRA-SYNC FINAL)
- * Este script gerencia a sincronização de relatórios mensais e baixa automática de pendências.
+ * PLATAFORMA ULTRAFINO - BACKEND GOOGLE SHEETS v5.0 (SYNC VICE-VERSA)
+ * Gerencia relatórios mensais, pendências e fornece estatísticas de saúde da planta.
  */
 
 function doPost(e) {
@@ -134,7 +134,7 @@ function doPost(e) {
   var sheetReports = ss.getSheetByName(nameRel) || ss.insertSheet(nameRel);
   var sheetPending = ss.getSheetByName(namePend) || ss.insertSheet(namePend);
   
-  // 1. PROCESSAMENTO DE RELATÓRIOS (REL_MM_YYYY)
+  // 1. RELATÓRIOS
   if (sheetReports.getLastRow() == 0) {
     sheetReports.appendRow(["Data", "Hora", "Área", "Operador", "Turma", "Turno", "Itens com Falha", "Observações Gerais"]);
     sheetReports.getRange(1, 1, 1, 8).setBackground("#0f172a").setFontColor("#FFFFFF").setFontWeight("bold");
@@ -143,20 +143,11 @@ function doPost(e) {
   
   if (data.reports && data.reports.length > 0) {
     data.reports.forEach(function(r) { 
-      sheetReports.appendRow([
-        r.data, 
-        r.hora, 
-        r.area, 
-        r.operador.toUpperCase(), 
-        r.turma, 
-        r.turno, 
-        r.itens_falha, 
-        r.obs.toUpperCase()
-      ]); 
+      sheetReports.appendRow([r.data, r.hora, r.area, r.operador.toUpperCase(), r.turma, r.turno, r.itens_falha, r.obs.toUpperCase()]); 
     });
   }
   
-  // 2. PROCESSAMENTO DE PENDÊNCIAS (UPSERT POR TAG)
+  // 2. PENDÊNCIAS (UPSERT)
   if (sheetPending.getLastRow() == 0) {
     sheetPending.appendRow(["Tag", "Área", "Descrição", "Prioridade", "Status", "Operador Origem", "Resolvido Por", "Data Reporte"]);
     sheetPending.getRange(1, 1, 1, 8).setBackground("#1e293b").setFontColor("#FFFFFF").setFontWeight("bold");
@@ -170,8 +161,6 @@ function doPost(e) {
     data.pending.forEach(function(p) { 
       var targetRow = -1;
       var tagInput = p.tag.toString().trim().toUpperCase();
-      
-      // Procura se a TAG já existe na planilha para atualizar em vez de criar duplicada
       for (var i = 1; i < values.length; i++) {
         if (values[i][0].toString().trim().toUpperCase() === tagInput) {
           targetRow = i + 1;
@@ -180,40 +169,15 @@ function doPost(e) {
       }
       
       if (targetRow > -1) {
-        // ATUALIZAÇÃO: Se a TAG existe, atualiza Status e Operador de Resolução
         sheetPending.getRange(targetRow, 5).setValue(p.status.toUpperCase());
         sheetPending.getRange(targetRow, 7).setValue(p.operador_resolucao.toUpperCase());
-        
-        // Estética: Cores baseadas no novo status
-        if (p.status.toUpperCase() === "RESOLVIDO") {
-          sheetPending.getRange(targetRow, 1, 1, 8).setFontColor("#94a3b8");
-          sheetPending.getRange(targetRow, 5).setBackground("#dcfce7").setFontColor("#166534");
-        } else {
-          sheetPending.getRange(targetRow, 1, 1, 8).setFontColor("#000000");
-          sheetPending.getRange(targetRow, 5).setBackground("#fef9c3").setFontColor("#854d0e");
-        }
       } else {
-        // INSERÇÃO: Se a TAG é nova, adiciona linha
-        sheetPending.appendRow([
-          p.tag.toUpperCase(), 
-          p.area, 
-          p.descricao.toUpperCase(), 
-          p.prioridade.toUpperCase(), 
-          p.status.toUpperCase(), 
-          p.operador_origem.toUpperCase(), 
-          p.operador_resolucao.toUpperCase(), 
-          p.data
-        ]);
-        
-        var newRow = sheetPending.getLastRow();
-        if (p.prioridade.toUpperCase() === "ALTA") {
-          sheetPending.getRange(newRow, 4).setBackground("#fee2e2").setFontColor("#991b1b");
-        }
+        sheetPending.appendRow([p.tag.toUpperCase(), p.area, p.descricao.toUpperCase(), p.prioridade.toUpperCase(), p.status.toUpperCase(), p.operador_origem.toUpperCase(), p.operador_resolucao.toUpperCase(), p.data]);
       }
     });
   }
   
-  return ContentService.createTextOutput("Sincronismo v4.5 OK").setMimeType(ContentService.MimeType.TEXT);
+  return ContentService.createTextOutput("Sincronismo v5.0 OK").setMimeType(ContentService.MimeType.TEXT);
 }
 
 function doGet(e) {
@@ -223,21 +187,14 @@ function doGet(e) {
   if (action === "getPendencies") {
     var allPendencies = [];
     var sheets = ss.getSheets();
-    
     sheets.forEach(function(sheet) {
       if (sheet.getName().indexOf("PEND_") === 0) {
         var data = sheet.getDataRange().getValues();
         for (var i = 1; i < data.length; i++) {
           if (data[i][0]) {
             allPendencies.push({
-              tag: data[i][0],
-              area: data[i][1],
-              descricao: data[i][2],
-              prioridade: data[i][3],
-              status: data[i][4],
-              operador_origem: data[i][5],
-              operador_resolucao: data[i][6],
-              data: data[i][7]
+              tag: data[i][0], area: data[i][1], descricao: data[i][2], prioridade: data[i][3], status: data[i][4],
+              operador_origem: data[i][5], operador_resolucao: data[i][6], data: data[i][7]
             });
           }
         }
@@ -245,8 +202,30 @@ function doGet(e) {
     });
     return ContentService.createTextOutput(JSON.stringify(allPendencies)).setMimeType(ContentService.MimeType.JSON);
   }
+
+  if (action === "getStats") {
+    var stats = { ok: 0, warning: 0, fail: 0, total: 0 };
+    var sheets = ss.getSheets();
+    sheets.forEach(function(sheet) {
+       if (sheet.getName().indexOf("PEND_") === 0) {
+         var data = sheet.getDataRange().getValues();
+         for (var i = 1; i < data.length; i++) {
+           if (data[i][0]) {
+             stats.total++;
+             var status = data[i][4].toString().toUpperCase();
+             var priority = data[i][3].toString().toUpperCase();
+             if (status === "RESOLVIDO") stats.ok++;
+             else if (priority === "ALTA") stats.fail++;
+             else stats.warning++;
+           }
+         }
+       }
+    });
+    // Se não houver pendências abertas, considerar planta OK baseada em total vs resolvido
+    return ContentService.createTextOutput(JSON.stringify(stats)).setMimeType(ContentService.MimeType.JSON);
+  }
   
-  return ContentService.createTextOutput(JSON.stringify({status: "Online", v: "4.5"})).setMimeType(ContentService.MimeType.JSON);
+  return ContentService.createTextOutput(JSON.stringify({status: "Online", v: "5.0"})).setMimeType(ContentService.MimeType.JSON);
 }`;
 
   return (
@@ -291,8 +270,8 @@ function doGet(e) {
               <div className="flex items-start gap-4">
                 <div className="p-3 bg-blue-50 text-blue-600 rounded-xl"><Unlock size={24} /></div>
                 <div className="flex-1">
-                  <h3 className="font-black text-slate-900 uppercase text-sm">Configuração Técnica (v4.5)</h3>
-                  <p className="text-slate-500 text-xs mt-1 font-medium italic">O script deve ser publicado como "Qualquer pessoa" para que os relatórios mensais funcionem.</p>
+                  <h3 className="font-black text-slate-900 uppercase text-sm">Configuração Técnica (v5.0)</h3>
+                  <p className="text-slate-500 text-xs mt-1 font-medium italic">O script agora envia estatísticas de saúde da planta para o Supervisório.</p>
                 </div>
               </div>
               <div className="space-y-4 animate-in fade-in duration-500">
@@ -315,20 +294,12 @@ function doGet(e) {
                 </div>
                  <div className="bg-slate-900 text-white p-6 rounded-2xl border border-slate-800">
                     <div className="flex justify-between items-center mb-4">
-                      <span className="text-[10px] font-black uppercase text-slate-400 tracking-widest">Script v4.5 (Novo)</span>
+                      <span className="text-[10px] font-black uppercase text-slate-400 tracking-widest">Script v5.0 (Novo)</span>
                       <button onClick={() => navigator.clipboard.writeText(appsScriptTemplate)} className="bg-white/5 hover:bg-white/10 px-3 py-1 rounded text-blue-400 text-[10px] font-bold uppercase flex items-center gap-1">
                         <Copy size={12} /> Copiar Código
                       </button>
                     </div>
                     <pre className="text-[9px] font-mono overflow-x-auto max-h-40 text-slate-400 custom-scrollbar">{appsScriptTemplate}</pre>
-                 </div>
-                 <div className="p-4 bg-emerald-50 rounded-xl border border-emerald-100 flex items-start gap-3">
-                   <div className="bg-emerald-500 text-white p-1 rounded">
-                    <CheckCircle2 size={14} />
-                   </div>
-                   <p className="text-[10px] font-bold text-emerald-700 leading-relaxed">
-                     REL_01_2026 e PEND_01_2026: Este script v4.5 garante que as abas mensais sejam criadas automaticamente e que as baixas de TAG funcionem.
-                   </p>
                  </div>
               </div>
               <div className="pt-4 border-t border-slate-100">
