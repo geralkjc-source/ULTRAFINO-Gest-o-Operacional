@@ -25,7 +25,7 @@ import ReportsHistory from './pages/ReportsHistory';
 import SyncDashboard from './pages/SyncDashboard';
 import Analytics from './pages/Analytics';
 import { Area, Report, PendingItem, Comment, ChecklistItem } from './types';
-import { syncToGoogleSheets, DEFAULT_SCRIPT_URL } from './services/googleSync';
+import { syncToGoogleSheets, fetchCloudItems, fetchCloudData, CloudStats, DEFAULT_SCRIPT_URL } from './services/googleSync';
 
 const VulcanLogo = ({ className = "" }: { className?: string }) => (
   <span className={`font-black tracking-tighter select-none ${className}`}>
@@ -37,7 +37,7 @@ const Sidebar = ({ isOpen, toggle, unsyncedCount }: { isOpen: boolean; toggle: (
   const location = useLocation();
   const menuItems = [
     { path: '/', label: 'Dashboard', icon: <LayoutDashboard size={20} /> },
-    { path: '/charts', label: 'Gráficos', icon: <PieChart size={20} /> },
+    { path: '/charts', label: 'Supervisório', icon: <PieChart size={20} /> },
     { path: '/pending', label: 'Pendências', icon: <AlertCircle size={20} /> },
     { path: '/history', label: 'Histórico', icon: <FileSpreadsheet size={20} /> },
     { 
@@ -145,14 +145,14 @@ const Header = ({ onToggleSidebar, unsyncedCount }: { onToggleSidebar: () => voi
         <div className="lg:hidden bg-white px-2 py-1 rounded-md border border-slate-100 flex items-center justify-center">
            <VulcanLogo className="text-sm text-slate-900" />
         </div>
-        <h2 className="text-slate-800 font-semibold text-lg hidden sm:block">Plataforma de Relatórios & Pendências</h2>
+        <h2 className="text-slate-800 font-black uppercase text-sm hidden sm:block tracking-tight">Relatórios & Pendências</h2>
       </div>
     </div>
     <div className="flex items-center gap-4">
       {unsyncedCount > 0 && (
-        <div className="hidden md:flex items-center gap-2 bg-amber-50 text-amber-600 px-3 py-1.5 rounded-full border border-amber-100 text-[10px] font-black uppercase tracking-wider animate-in fade-in slide-in-from-right-2">
+        <div className="hidden md:flex items-center gap-2 bg-amber-50 text-amber-600 px-3 py-1.5 rounded-full border border-amber-100 text-[9px] font-black uppercase tracking-wider animate-pulse">
           <CloudOff size={14} />
-          {unsyncedCount} Itens Pendentes de Nuvem
+          {unsyncedCount} Pendentes
         </div>
       )}
       <div className="w-8 h-8 rounded-full bg-slate-100 border border-slate-200 flex items-center justify-center text-slate-400">
@@ -164,9 +164,11 @@ const Header = ({ onToggleSidebar, unsyncedCount }: { onToggleSidebar: () => voi
 
 const App: React.FC = () => {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
-  // INICIALIZAÇÃO SEGURA COM ARRAY VAZIO []
   const [reports, setReports] = useState<Report[]>([]);
   const [pendingItems, setPendingItems] = useState<PendingItem[]>([]);
+  const [isGlobalSyncing, setIsGlobalSyncing] = useState(false);
+  const [cloudStats, setCloudStats] = useState<CloudStats | null>(null);
+  const [lastSyncSource, setLastSyncSource] = useState<'local' | 'cloud'>('local');
 
   useEffect(() => {
     try {
@@ -175,7 +177,6 @@ const App: React.FC = () => {
       if (savedReports) setReports(JSON.parse(savedReports) || []);
       if (savedPending) setPendingItems(JSON.parse(savedPending) || []);
     } catch (e) {
-      console.error("Erro ao carregar dados locais", e);
       setReports([]);
       setPendingItems([]);
     }
@@ -184,6 +185,67 @@ const App: React.FC = () => {
   const unsyncedCount = 
     (reports || []).filter(r => !r.synced).length + 
     (pendingItems || []).filter(p => !p.synced).length;
+
+  const refreshDataFromCloud = async () => {
+    const scriptUrl = localStorage.getItem('google_apps_script_url') || DEFAULT_SCRIPT_URL;
+    if (!scriptUrl) return;
+
+    setIsGlobalSyncing(true);
+    try {
+      // 1. Puxar Pendências e Estatísticas em paralelo
+      const [cloudItems, stats] = await Promise.all([
+        fetchCloudItems(scriptUrl),
+        fetchCloudData(scriptUrl)
+      ]);
+      
+      if (stats) setCloudStats(stats);
+
+      // 2. Mesclar Pendências
+      const map = new Map<string, PendingItem>();
+      
+      // Carrega o que veio da nuvem
+      cloudItems.forEach(item => {
+        if (item.tag) map.set(item.tag.trim().toUpperCase(), item);
+      });
+
+      // Sobrescreve com o que temos local se for mais novo ou resolvido localmente
+      pendingItems.forEach(localItem => {
+        if (localItem.tag) {
+          const key = localItem.tag.trim().toUpperCase();
+          const cloudItem = map.get(key);
+          if (!cloudItem || localItem.timestamp > cloudItem.timestamp || localItem.status === 'resolvido') {
+            map.set(key, localItem);
+          }
+        }
+      });
+
+      const merged = Array.from(map.values());
+      setPendingItems(merged);
+      localStorage.setItem('ultrafino_pending', JSON.stringify(merged));
+      setLastSyncSource('cloud');
+
+      // 3. Tentar enviar o que está pendente (Push)
+      const unsyncedReports = reports.filter(r => !r.synced);
+      const unsyncedPending = merged.filter(p => !p.synced);
+
+      if (unsyncedReports.length > 0 || unsyncedPending.length > 0) {
+        const syncResult = await syncToGoogleSheets(scriptUrl, unsyncedReports, unsyncedPending);
+        if (syncResult.success) {
+          const finalReports = reports.map(r => ({ ...r, synced: true }));
+          const finalPending = merged.map(p => ({ ...p, synced: true }));
+          setReports(finalReports);
+          setPendingItems(finalPending);
+          localStorage.setItem('ultrafino_reports', JSON.stringify(finalReports));
+          localStorage.setItem('ultrafino_pending', JSON.stringify(finalPending));
+        }
+      }
+    } catch (error) {
+      console.error("Erro na sincronização global:", error);
+      setLastSyncSource('local');
+    } finally {
+      setIsGlobalSyncing(false);
+    }
+  };
 
   const addReport = (report: Report) => {
     const newReport = { ...report, synced: false };
@@ -196,7 +258,6 @@ const App: React.FC = () => {
     (report.items || []).forEach((item, index) => {
       if (item.status === 'fail' || item.status === 'warning') {
         let finalTag = item.label;
-
         if (item.label.startsWith('- ')) {
           for (let i = index - 1; i >= 0; i--) {
             if (!report.items[i].label.startsWith('- ') && !report.items[i].label.startsWith('SECTION:')) {
@@ -206,10 +267,15 @@ const App: React.FC = () => {
           }
         }
 
+        let cleanDescription = item.observation?.trim() || '';
+        if (!cleanDescription || ['PARADO', 'FALHA'].includes(cleanDescription.toUpperCase())) {
+          cleanDescription = item.status === 'fail' ? 'FORA DE SERVIÇO / PARADO' : 'ANOMALIA / ATENÇÃO';
+        }
+
         newPendingFromChecklist.push({
           id: `pend-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
           tag: finalTag.replace('- ', '').trim().toUpperCase(),
-          description: item.observation?.trim() || (item.status === 'fail' ? 'FORA DE SERVIÇO' : 'ANOMALIA / ATENÇÃO'),
+          description: cleanDescription,
           priority: (item.status === 'fail' ? 'alta' : 'media') as 'alta' | 'media',
           status: 'aberto' as const,
           area: report.area,
@@ -228,83 +294,27 @@ const App: React.FC = () => {
       setPendingItems(updatedPending);
       localStorage.setItem('ultrafino_pending', JSON.stringify(updatedPending));
     }
+    
+    // Auto sync após relatório
+    refreshDataFromCloud();
   };
 
   const resolvePending = async (id: string, operatorName?: string) => {
     const resolvedBy = operatorName || 'Operador';
-    let updatedItem: PendingItem | undefined;
-
-    const updatedPending = (pendingItems || []).map(p => {
-      if (p.id === id) {
-        updatedItem = { 
-          ...p, 
-          status: 'resolvido' as const, 
-          synced: false, 
-          resolvedBy 
-        };
-        return updatedItem;
-      }
-      return p;
-    });
-
+    const updatedPending = pendingItems.map(p => 
+      p.id === id ? { ...p, status: 'resolvido' as const, synced: false, resolvedBy } : p
+    );
     setPendingItems(updatedPending);
     localStorage.setItem('ultrafino_pending', JSON.stringify(updatedPending));
-
-    if (updatedItem?.sourceReportId) {
-      const updatedReports = (reports || []).map(r => {
-        if (r.id === updatedItem?.sourceReportId) {
-          return {
-            ...r,
-            items: (r.items || []).map(item => {
-              if (item.label.toUpperCase().includes(updatedItem!.tag)) {
-                return { ...item, status: 'ok' as const };
-              }
-              return item;
-            })
-          };
-        }
-        return r;
-      });
-      setReports(updatedReports);
-      localStorage.setItem('ultrafino_reports', JSON.stringify(updatedReports));
-    }
-
-    const scriptUrl = localStorage.getItem('google_apps_script_url') || DEFAULT_SCRIPT_URL;
-    if (updatedItem && scriptUrl) {
-      try {
-        const result = await syncToGoogleSheets(scriptUrl, [], [updatedItem]);
-        if (result.success) {
-          const finalPending = updatedPending.map(p => p.id === id ? { ...p, synced: true } : p);
-          setPendingItems(finalPending);
-          localStorage.setItem('ultrafino_pending', JSON.stringify(finalPending));
-        }
-      } catch (error) {
-        console.error("Falha no Sincronismo da Resolução:", error);
-      }
-    }
-  };
-
-  const addPendingComment = (pendingId: string, commentText: string) => {
-    const newComment: Comment = {
-      id: `comm-${Date.now()}`,
-      text: commentText,
-      author: 'Operador', 
-      timestamp: Date.now()
-    };
-    const updated = (pendingItems || []).map(p => 
-      p.id === pendingId ? { ...p, comments: [...(p.comments || []), newComment], synced: false } : p
-    );
-    setPendingItems(updated);
-    localStorage.setItem('ultrafino_pending', JSON.stringify(updated));
+    
+    refreshDataFromCloud();
   };
 
   const onSyncSuccess = (syncedReportIds: string[], syncedPendingIds: string[]) => {
-    const updatedReports = (reports || []).map(r => syncedReportIds.includes(r.id) ? { ...r, synced: true } : r);
-    const updatedPending = (pendingItems || []).map(p => syncedPendingIds.includes(p.id) ? { ...p, synced: true } : p);
-    
+    const updatedReports = reports.map(r => syncedReportIds.includes(r.id) ? { ...r, synced: true } : r);
+    const updatedPending = pendingItems.map(p => syncedPendingIds.includes(p.id) ? { ...p, synced: true } : p);
     setReports(updatedReports);
     setPendingItems(updatedPending);
-    
     localStorage.setItem('ultrafino_reports', JSON.stringify(updatedReports));
     localStorage.setItem('ultrafino_pending', JSON.stringify(updatedPending));
   };
@@ -319,24 +329,34 @@ const App: React.FC = () => {
           
           <div className="flex-1 p-6">
             <Routes>
-              <Route path="/" element={<Dashboard reports={reports} pendingItems={pendingItems} />} />
-              <Route path="/charts" element={<Analytics reports={reports} pendingItems={pendingItems} />} />
               <Route 
-                path="/checklist/:areaName" 
-                element={<ChecklistArea onSaveReport={addReport} />} 
+                path="/" 
+                element={
+                  <Dashboard 
+                    reports={reports} 
+                    pendingItems={pendingItems} 
+                    onRefreshCloud={refreshDataFromCloud}
+                    isRefreshing={isGlobalSyncing}
+                  />
+                } 
               />
               <Route 
-                path="/pending" 
-                element={<PendingList pendingItems={pendingItems} onResolve={resolvePending} onAddComment={addPendingComment} />} 
+                path="/charts" 
+                element={
+                  <Analytics 
+                    reports={reports} 
+                    pendingItems={pendingItems} 
+                    cloudStats={cloudStats}
+                    onRefresh={refreshDataFromCloud}
+                    isRefreshing={isGlobalSyncing}
+                    syncSource={lastSyncSource}
+                  />
+                } 
               />
-              <Route 
-                path="/history" 
-                element={<ReportsHistory reports={reports} onAddItemComment={() => {}} />} 
-              />
-              <Route 
-                path="/sync" 
-                element={<SyncDashboard reports={reports} pendingItems={pendingItems} onSyncSuccess={onSyncSuccess} />} 
-              />
+              <Route path="/checklist/:areaName" element={<ChecklistArea onSaveReport={addReport} />} />
+              <Route path="/pending" element={<PendingList pendingItems={pendingItems} onResolve={resolvePending} onAddComment={() => {}} />} />
+              <Route path="/history" element={<ReportsHistory reports={reports} onAddItemComment={() => {}} />} />
+              <Route path="/sync" element={<SyncDashboard reports={reports} pendingItems={pendingItems} onSyncSuccess={onSyncSuccess} />} />
             </Routes>
           </div>
           
@@ -344,7 +364,7 @@ const App: React.FC = () => {
             <div className="bg-white px-2 py-1 rounded-md shadow-sm opacity-60 grayscale hover:grayscale-0 transition-all">
                <VulcanLogo className="text-[10px] text-slate-900" />
             </div>
-            <p>&copy; {new Date().getFullYear()} Ultrafino Operações Industriais - Todos os direitos reservados.</p>
+            <p>&copy; {new Date().getFullYear()} Ultrafino Operações Industriais.</p>
           </footer>
         </main>
       </div>

@@ -1,7 +1,7 @@
 
 import { Report, PendingItem, Area } from '../types';
 
-export const DEFAULT_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzTyyTr1J1q_ZDODvWY6U9UqbXsT04f2OyeP5ucwVGenS7o-DFm5bCC8d5n7ZI_MFg/exec';
+export const DEFAULT_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbyjKp9VxCrV3vqKC8-KqHwd9O0n3UpVmDJUEeQKQwz12saYdR1_35JMSbn2QJwUQPLX/exec';
 export const MASTER_SHEET_URL = 'https://docs.google.com/spreadsheets/d/1ZFYCWEIXJMNB3eMc7HhttchcsBRcG0Xa5LigMeeijvU/edit?usp=sharing';
 
 export interface SyncResponse {
@@ -25,8 +25,9 @@ export const syncToGoogleSheets = async (
   reports: Report[], 
   pending: PendingItem[]
 ): Promise<SyncResponse> => {
-  if (!scriptUrl || scriptUrl === DEFAULT_SCRIPT_URL) {
-    return { success: false, message: "URL do Script não configurada adequadamente." };
+  // Se a URL estiver vazia ou for apenas um placeholder, não prossegue
+  if (!scriptUrl || scriptUrl.trim() === '') {
+    return { success: false, message: "URL do Script não configurada." };
   }
 
   try {
@@ -37,8 +38,8 @@ export const syncToGoogleSheets = async (
       action: "sync",
       mes_referencia: mesReferencia,
       reports: (reports || []).map(r => ({
-        data: new Date(r.timestamp).toLocaleDateString('pt-BR'),
-        hora: new Date(r.timestamp).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
+        data: r.timestamp ? new Date(r.timestamp).toLocaleDateString('pt-BR') : '-',
+        hora: r.timestamp ? new Date(r.timestamp).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : '-',
         area: r.area,
         operador: (r.operator || 'N/A').toUpperCase(),
         turma: r.turma,
@@ -54,12 +55,11 @@ export const syncToGoogleSheets = async (
         status: (p.status || 'ABERTO').toUpperCase(),
         operador_origem: (p.operator || 'N/A').toUpperCase(),
         operador_resolucao: (p.resolvedBy || '-').toUpperCase(),
-        data: new Date(p.timestamp).toLocaleString('pt-BR')
+        data: p.timestamp ? new Date(p.timestamp).toLocaleString('pt-BR') : '-'
       }))
     };
 
-    // Usamos POST com mode: no-cors. O resultado será sempre success: true se a rede estiver ok,
-    // pois não conseguimos ler a resposta opaca.
+    // Usamos POST com mode: no-cors para evitar erros de CORS em redirecionamentos do Google
     await fetch(scriptUrl, {
       method: 'POST',
       mode: 'no-cors', 
@@ -67,18 +67,18 @@ export const syncToGoogleSheets = async (
       body: JSON.stringify(payload),
     });
 
-    return { success: true, message: "Dados transmitidos!" };
+    return { success: true, message: "Sincronizado!" };
   } catch (error) {
     console.error("Sync Error:", error);
-    return { success: false, message: "Falha na conexão com a nuvem." };
+    return { success: false, message: "Erro na conexão." };
   }
 };
 
 /**
- * Busca itens de pendência da nuvem com validação de JSON.
+ * Busca itens de pendência da nuvem com validação rigorosa.
  */
 export const fetchCloudItems = async (scriptUrl: string): Promise<PendingItem[]> => {
-  if (!scriptUrl || scriptUrl === DEFAULT_SCRIPT_URL) return [];
+  if (!scriptUrl || scriptUrl.trim() === '') return [];
   
   try {
     const url = `${scriptUrl}?action=getPendencies&t=${Date.now()}`;
@@ -86,10 +86,10 @@ export const fetchCloudItems = async (scriptUrl: string): Promise<PendingItem[]>
     if (!response.ok) return [];
     
     const text = await response.text();
-    // Verifica se a resposta parece um JSON (deve começar com [ para array)
     const trimmed = text.trim();
+    
+    // Validação defensiva: se não começar com '[', o Google provavelmente retornou HTML (Erro/Login)
     if (!trimmed.startsWith('[')) {
-      console.warn("Resposta da nuvem não é um array válido (possível erro de permissão no Google)");
       return [];
     }
     
@@ -110,7 +110,7 @@ export const fetchCloudItems = async (scriptUrl: string): Promise<PendingItem[]>
       turma: 'A' 
     }));
   } catch (error) {
-    console.error("Erro ao buscar pendências na nuvem:", error);
+    console.error("Fetch Items Error:", error);
     return [];
   }
 };
@@ -119,7 +119,7 @@ export const fetchCloudItems = async (scriptUrl: string): Promise<PendingItem[]>
  * Busca estatísticas de saúde da planta da nuvem.
  */
 export const fetchCloudData = async (scriptUrl: string): Promise<CloudStats | null> => {
-  if (!scriptUrl || scriptUrl === DEFAULT_SCRIPT_URL) return null;
+  if (!scriptUrl || scriptUrl.trim() === '') return null;
   
   try {
     const response = await fetch(`${scriptUrl}?action=getStats&t=${Date.now()}`);
@@ -131,7 +131,7 @@ export const fetchCloudData = async (scriptUrl: string): Promise<CloudStats | nu
     
     return JSON.parse(trimmed);
   } catch (error) {
-    console.error("Erro ao buscar estatísticas na nuvem:", error);
+    console.error("Fetch Stats Error:", error);
     return null;
   }
 };

@@ -1,13 +1,9 @@
 
-import React, { useMemo, useState, useEffect } from 'react';
+import React, { useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { 
   Activity, 
   RotateCw,
-  PieChart,
-  Cloud,
-  AlertCircle,
-  Database,
   ArrowRight,
   Zap,
   Droplets,
@@ -15,59 +11,44 @@ import {
   Filter,
   CheckCircle2,
   Wifi,
-  WifiOff
+  WifiOff,
+  Database
 } from 'lucide-react';
 import { Report, PendingItem, Area } from '../types';
-import { fetchCloudData, CloudStats, fetchCloudItems, DEFAULT_SCRIPT_URL } from '../services/googleSync';
+import { CloudStats } from '../services/googleSync';
 
 interface AnalyticsProps {
   reports: Report[];
   pendingItems: PendingItem[];
+  cloudStats: CloudStats | null;
+  onRefresh: () => Promise<void>;
+  isRefreshing: boolean;
+  syncSource: 'local' | 'cloud';
 }
 
-const Analytics: React.FC<AnalyticsProps> = ({ reports = [], pendingItems = [] }) => {
+const Analytics: React.FC<AnalyticsProps> = ({ 
+  reports = [], 
+  pendingItems = [], 
+  cloudStats, 
+  onRefresh, 
+  isRefreshing,
+  syncSource 
+}) => {
   const navigate = useNavigate();
-  const [isRefreshing, setIsRefreshing] = useState(false);
-  const [cloudStats, setCloudStats] = useState<CloudStats | null>(null);
-  const [cloudPending, setCloudPending] = useState<PendingItem[]>([]);
-  const [lastUpdateSource, setLastUpdateSource] = useState<'local' | 'cloud'>('local');
 
-  const scriptUrl = localStorage.getItem('google_apps_script_url') || DEFAULT_SCRIPT_URL;
-
-  // Processamento ultra-defensivo dos dados para o Supervisório
+  // Processamento do Supervisório baseado exclusivamente no estado consolidado (Prop)
   const areaHealth = useMemo(() => {
     try {
       const today = new Date().toLocaleDateString('pt-BR');
-      const allPendingMap = new Map<string, PendingItem>();
       
-      const safeCloudPending = Array.isArray(cloudPending) ? cloudPending : [];
-      const safeLocalPending = Array.isArray(pendingItems) ? pendingItems : [];
-      const safeReports = Array.isArray(reports) ? reports : [];
-
-      // Unificar dados da nuvem e locais por TAG (prioridade para a alteração mais recente)
-      safeCloudPending.forEach(cp => {
-        if (cp && cp.tag) allPendingMap.set(cp.tag.trim().toUpperCase(), cp);
-      });
-
-      safeLocalPending.forEach(lp => {
-        if (lp && lp.tag) {
-          const tag = lp.tag.trim().toUpperCase();
-          const existing = allPendingMap.get(tag);
-          // Se o local for mais novo ou estiver resolvido, ele manda na visualização
-          if (!existing || lp.timestamp >= existing.timestamp || lp.status === 'resolvido') {
-            allPendingMap.set(tag, lp);
-          }
-        }
-      });
-
-      const combinedPendencies = Array.from(allPendingMap.values());
-
       return Object.values(Area).map(area => {
-        const areaPendenciesOpen = combinedPendencies.filter(p => p.area === area && p.status === 'aberto');
+        // As pendências já vem mescladas da Prop global do App.tsx
+        const areaPendenciesOpen = pendingItems.filter(p => p.area === area && p.status === 'aberto');
+        
         const hasCritical = areaPendenciesOpen.some(p => p.priority === 'alta');
         const hasAnomaly = areaPendenciesOpen.some(p => p.priority === 'media');
 
-        const reportedToday = safeReports.find(r => 
+        const reportedToday = reports.find(r => 
           r && r.area === area && 
           new Date(r.timestamp).toLocaleDateString('pt-BR') === today
         );
@@ -88,48 +69,19 @@ const Analytics: React.FC<AnalyticsProps> = ({ reports = [], pendingItems = [] }
       console.error("Erro no processamento Analytics:", e);
       return [];
     }
-  }, [reports, pendingItems, cloudPending]);
+  }, [reports, pendingItems]);
 
   const statsSummary = useMemo(() => {
-    const counts = { critical: 0, anomaly: 0, ok: 0, standby: 0 };
-    areaHealth.forEach(a => {
-      if (counts[a.status] !== undefined) counts[a.status]++;
-    });
-    return { ...counts, total: areaHealth.length || 1 };
-  }, [areaHealth]);
-
-  const handleRefresh = async () => {
-    // Se a URL for a padrão (vazia/exemplo), não tenta buscar na nuvem
-    if (!scriptUrl || scriptUrl === DEFAULT_SCRIPT_URL) {
-      setLastUpdateSource('local');
-      return;
+    // Se temos estatísticas da nuvem, usamos elas. Caso contrário, calculamos o local.
+    if (cloudStats && syncSource === 'cloud') {
+       return { 
+         total: cloudStats.total || areaHealth.length,
+         ok: cloudStats.ok || areaHealth.filter(a => a.status === 'ok').length
+       };
     }
-
-    setIsRefreshing(true);
-    try {
-      const [stats, items] = await Promise.all([
-        fetchCloudData(scriptUrl),
-        fetchCloudItems(scriptUrl)
-      ]);
-
-      if (stats) setCloudStats(stats);
-      if (Array.isArray(items)) {
-        setCloudPending(items);
-        setLastUpdateSource('cloud');
-      } else {
-        setLastUpdateSource('local');
-      }
-    } catch (err) {
-      console.error("Falha ao sincronizar com a nuvem:", err);
-      setLastUpdateSource('local');
-    } finally {
-      setIsRefreshing(false);
-    }
-  };
-
-  useEffect(() => { 
-    handleRefresh(); 
-  }, []);
+    const okCount = areaHealth.filter(a => a.status === 'ok').length;
+    return { ok: okCount, total: areaHealth.length || 1 };
+  }, [areaHealth, cloudStats, syncSource]);
 
   const AreaNode = ({ data }: { data: typeof areaHealth[0] }) => {
     const icons: Record<string, React.ReactNode> = {
@@ -194,38 +146,31 @@ const Analytics: React.FC<AnalyticsProps> = ({ reports = [], pendingItems = [] }
           </h1>
           <div className="flex items-center gap-3 mt-1">
             <p className="text-slate-500 font-bold uppercase text-[10px] tracking-widest">Status Geral</p>
-            <div className={`flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[9px] font-black uppercase ${lastUpdateSource === 'cloud' ? 'bg-emerald-100 text-emerald-600' : 'bg-slate-100 text-slate-500'}`}>
-              {lastUpdateSource === 'cloud' ? <Wifi size={10} /> : <WifiOff size={10} />}
-              {lastUpdateSource === 'cloud' ? 'Planilha Online' : 'Modo Offline'}
+            <div className={`flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[9px] font-black uppercase ${syncSource === 'cloud' ? 'bg-emerald-100 text-emerald-600' : 'bg-slate-100 text-slate-500'}`}>
+              {syncSource === 'cloud' ? <Wifi size={10} /> : <WifiOff size={10} />}
+              {syncSource === 'cloud' ? 'MODO ONLINE' : 'Modo Offline'}
             </div>
           </div>
         </div>
         
         <div className="flex gap-2">
           <button 
-            onClick={handleRefresh}
+            onClick={onRefresh}
             disabled={isRefreshing}
             className="flex items-center gap-2 px-6 py-3 bg-slate-900 text-white rounded-xl text-[10px] font-black uppercase hover:bg-slate-800 transition-all shadow-xl active:scale-95 disabled:opacity-50"
           >
             <RotateCw size={14} className={isRefreshing ? 'animate-spin' : ''} />
-            {isRefreshing ? 'Buscando...' : 'Atualizar Nuvem'}
+            {isRefreshing ? 'Sincronizando...' : 'Obter Dados Online'}
           </button>
         </div>
       </div>
 
       <div className="bg-slate-950 p-8 md:p-12 rounded-[3rem] shadow-2xl border-4 border-slate-900 relative overflow-hidden">
-        {areaHealth.length > 0 ? (
-          <div className="relative z-10 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-6">
-            {areaHealth.map(data => (
-              <AreaNode key={data.area} data={data} />
-            ))}
-          </div>
-        ) : (
-          <div className="py-20 text-center space-y-4 relative z-10">
-            <Database size={48} className="text-slate-800 mx-auto" />
-            <p className="text-slate-500 font-black uppercase text-xs tracking-widest">Nenhum dado de área disponível para processamento</p>
-          </div>
-        )}
+        <div className="relative z-10 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-6">
+          {areaHealth.map(data => (
+            <AreaNode key={data.area} data={data} />
+          ))}
+        </div>
         
         <div className="mt-12 flex flex-col md:flex-row justify-between items-center gap-6 pt-8 border-t border-white/5 relative z-10">
           <div className="flex items-center gap-6">
@@ -242,7 +187,7 @@ const Analytics: React.FC<AnalyticsProps> = ({ reports = [], pendingItems = [] }
             </div>
             <div>
               <p className="text-[10px] font-black text-blue-400 uppercase tracking-widest">Conectividade</p>
-              <p className="text-[10px] font-bold text-slate-400 uppercase">{lastUpdateSource === 'cloud' ? 'Sincronizado via Google' : 'Usando Banco Local'}</p>
+              <p className="text-[10px] font-bold text-slate-400 uppercase">{syncSource === 'cloud' ? 'Sincronizado via Google' : 'Usando Banco Local'}</p>
             </div>
           </div>
         </div>

@@ -9,7 +9,7 @@ export const formatSummaryForWhatsApp = (items: PendingItem[], note?: string): s
   let message = `*PENDÊNCIAS E PONTOS DE ATENÇÃO NO CIRCUITO DE ULTRAFINOS*\n\n`;
 
   if (note) {
-    message += `*Nota:* ${note}\n\n`;
+    message += `*Nota:* ${note.trim()}\n\n`;
   }
 
   // Agrupar por área
@@ -23,15 +23,22 @@ export const formatSummaryForWhatsApp = (items: PendingItem[], note?: string): s
     message += `*${area.toUpperCase()}*\n`;
     
     areaItems.forEach(item => {
-      let statusEmoji = '⚪';
+      let emoji = '⚪';
       if (item.status === 'resolvido') {
-        statusEmoji = '✅';
+        emoji = '✅';
       } else {
-        statusEmoji = item.priority === 'alta' ? '🔴' : '🟡';
+        emoji = item.priority === 'alta' ? '🔴' : '🟡';
       }
 
       const tagPart = item.tag ? item.tag.trim() : '';
-      message += `▪️${tagPart}${statusEmoji} ${item.description.toUpperCase()}\n`;
+      const descPart = item.description ? item.description.trim().toUpperCase() : '';
+      
+      // Formato: ▪️TAG EMOJI DESCRIÇÃO ou ▪️DESCRIÇÃO EMOJI se não houver tag
+      if (tagPart) {
+        message += `▪️${tagPart}${emoji} ${descPart}\n`;
+      } else {
+        message += `▪️${descPart}${emoji}\n`;
+      }
     });
     message += `\n`;
   });
@@ -67,7 +74,7 @@ export const formatPendingForWhatsApp = (item: PendingItem): string => {
 };
 
 /**
- * Formata um relatório para o padrão de mensagem do WhatsApp solicitado.
+ * Formata um relatório completo.
  */
 export const formatReportForWhatsApp = (report: Report, itemsWithMaybeSections?: ChecklistItem[]): string => {
   const dateStr = new Date(report.timestamp).toLocaleDateString('pt-BR');
@@ -140,39 +147,28 @@ export const formatReportForWhatsApp = (report: Report, itemsWithMaybeSections?:
 
       if (isMeasurement || isTextInput) {
         let suffix = '';
-        
         if (isMeasurement) {
-          if (labelLower.includes('actual') || labelLower.includes('atual') || labelLower.includes('nível')) {
-            const nextItem = itemsToFormat[index + 1];
-            if (nextItem && nextItem.label.toLowerCase().includes('setpoint') && item.observation && nextItem.observation) {
-              if (parseFloat(item.observation) === parseFloat(nextItem.observation)) {
-                suffix = ' 🎯';
-              }
-            }
-          } else if (labelLower.includes('setpoint')) {
-            const prevItem = itemsToFormat[index - 1];
-            if (prevItem && (prevItem.label.toLowerCase().includes('actual') || prevItem.label.toLowerCase().includes('atual') || prevItem.label.toLowerCase().includes('nível')) && item.observation && prevItem.observation) {
-              if (parseFloat(item.observation) === parseFloat(prevItem.observation)) {
-                suffix = ' 🎯';
-              }
-            }
-          }
+           // Lógica de alvo (actual == setpoint)
+           const isValActual = labelLower.includes('actual') || labelLower.includes('atual') || labelLower.includes('nível');
+           if (isValActual) {
+             const nextItem = itemsToFormat[index + 1];
+             if (nextItem && nextItem.label.toLowerCase().includes('setpoint') && item.observation && nextItem.observation) {
+               if (parseFloat(item.observation) === parseFloat(nextItem.observation)) suffix = ' 🎯';
+             }
+           }
         }
-
         message += `${item.label}: ${item.observation || '---'}${suffix}\n`;
       } else {
         let obsText = '';
         if (item.observation) {
           const cleanObs = item.observation.trim();
           const autoTexts = ['OK', 'RODANDO', 'SIM', 'STANDBY', 'NÃO', 'ABERTO', 'FECHADO', 'SEM RETORNO', 'COM RETORNO', 'NO lugar', 'Fora do lugar', 'BOM', 'TURVA', 'RUIM'];
-          
           if (!autoTexts.includes(cleanObs)) {
             obsText = `\n   └ 📝 _MOTIVO: ${cleanObs.toUpperCase()}_`;
           } else {
              obsText = ` ${cleanObs}`;
           }
         }
-        
         message += `${item.label} ${statusEmoji}${obsText}\n`;
       }
     }
@@ -207,7 +203,6 @@ export const copyToClipboard = async (text: string): Promise<boolean> => {
       return success;
     }
   } catch (err) {
-    console.error('Falha ao copiar:', err);
     return false;
   }
 };
