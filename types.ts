@@ -9,6 +9,7 @@ export enum Area {
 
 export type Turma = 'A' | 'B' | 'C' | 'D';
 export type Turno = 'MANHÃ' | 'TARDE' | 'NOITE';
+export type Discipline = 'MECÂNICA' | 'ELÉTRICA' | 'INSTRUMENTAÇÃO' | 'OPERAÇÃO';
 
 export interface Comment {
   id: string;
@@ -22,6 +23,7 @@ export interface ChecklistItem {
   label: string;
   status: 'ok' | 'fail' | 'na' | 'warning';
   observation?: string;
+  discipline?: Discipline; // Disciplina sugerida ou selecionada
   comments?: Comment[];
 }
 
@@ -35,7 +37,7 @@ export interface Report {
   items: ChecklistItem[];
   pendingItems: PendingItem[];
   generalObservations: string;
-  synced?: boolean; // Controle de sincronização Google Drive
+  synced?: boolean;
 }
 
 export interface PendingItem {
@@ -43,13 +45,15 @@ export interface PendingItem {
   tag: string;
   description: string;
   priority: 'baixa' | 'media' | 'alta';
+  discipline: Discipline; // Nova categorização
   status: 'aberto' | 'resolvido';
   area: Area;
   timestamp: number;
   operator: string;
   turma: Turma;
   comments?: Comment[];
-  synced?: boolean; // Controle de sincronização Google Drive
-  resolvedBy?: string; // Operador que resolveu a pendência
-  sourceReportId?: string; // ID do relatório que gerou esta pendência
+  synced?: boolean;
+  resolvedBy?: string;
+  resolvedByTurma?: Turma;
+  sourceReportId?: string;
 }

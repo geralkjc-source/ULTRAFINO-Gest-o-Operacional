@@ -1,5 +1,5 @@
 {
-  "name": "Ultrafino Plataforma Operacional",
+  "name": "Ultrafino Plataforma Operacional V1",
   "description": "Sistema de gestão de checklists e pendências industriais com integração WhatsApp e análise IA.",
   "requestFramePermissions": [
     "camera"

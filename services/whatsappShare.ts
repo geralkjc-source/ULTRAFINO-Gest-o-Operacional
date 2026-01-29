@@ -1,5 +1,5 @@
 
-import { Report, ChecklistItem, Area, PendingItem } from '../types';
+import { Report, ChecklistItem, PendingItem } from '../types';
 import { CHECKLIST_TEMPLATES } from '../constants';
 
 /**
@@ -7,12 +7,8 @@ import { CHECKLIST_TEMPLATES } from '../constants';
  */
 export const formatSummaryForWhatsApp = (items: PendingItem[], note?: string): string => {
   let message = `*PENDÊNCIAS E PONTOS DE ATENÇÃO NO CIRCUITO DE ULTRAFINOS*\n\n`;
+  if (note) message += `*Nota:* ${note.trim()}\n\n`;
 
-  if (note) {
-    message += `*Nota:* ${note.trim()}\n\n`;
-  }
-
-  // Agrupar por área
   const groupedByArea: Record<string, PendingItem[]> = {};
   items.forEach(item => {
     if (!groupedByArea[item.area]) groupedByArea[item.area] = [];
@@ -21,60 +17,19 @@ export const formatSummaryForWhatsApp = (items: PendingItem[], note?: string): s
 
   Object.entries(groupedByArea).forEach(([area, areaItems]) => {
     message += `*${area.toUpperCase()}*\n`;
-    
     areaItems.forEach(item => {
-      let emoji = '⚪';
-      if (item.status === 'resolvido') {
-        emoji = '✅';
-      } else {
-        emoji = item.priority === 'alta' ? '🔴' : '🟡';
-      }
-
+      let emoji = item.status === 'resolvido' ? '✅' : (item.priority === 'alta' ? '🔴' : '🟡');
       const tagPart = item.tag ? item.tag.trim() : '';
       const descPart = item.description ? item.description.trim().toUpperCase() : '';
-      
-      // Formato: ▪️TAG EMOJI DESCRIÇÃO ou ▪️DESCRIÇÃO EMOJI se não houver tag
-      if (tagPart) {
-        message += `▪️${tagPart}${emoji} ${descPart}\n`;
-      } else {
-        message += `▪️${descPart}${emoji}\n`;
-      }
+      message += tagPart ? `▪️${tagPart}${emoji} ${descPart}\n` : `▪️${descPart}${emoji}\n`;
     });
     message += `\n`;
   });
-
   return message.trim();
 };
 
 /**
- * Formata uma pendência individual para compartilhamento.
- */
-export const formatPendingForWhatsApp = (item: PendingItem): string => {
-  const dateStr = new Date(item.timestamp).toLocaleDateString('pt-BR');
-  const timeStr = new Date(item.timestamp).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
-  
-  const priorityEmoji = item.priority === 'alta' ? '🔴' : item.priority === 'media' ? '🟡' : '🔵';
-  
-  let message = `*🚨 PENDÊNCIA OPERACIONAL - ULTRAFINO*\n\n`;
-  message += `📍 *ÁREA:* ${item.area.toUpperCase()}\n`;
-  message += `🏷️ *TAG:* ${item.tag || 'N/A'}\n`;
-  message += `${priorityEmoji} *PRIORIDADE:* ${item.priority.toUpperCase()}\n`;
-  message += `📝 *DESCRIÇÃO:* ${item.description.toUpperCase()}\n`;
-  message += `⏰ *DATA:* ${dateStr} às ${timeStr}\n`;
-  message += `🔄 *STATUS:* ${item.status.toUpperCase()}\n`;
-
-  if (item.comments && item.comments.length > 0) {
-    message += `\n💬 *ÚLTIMOS COMENTÁRIOS:*\n`;
-    item.comments.slice(-2).forEach(c => {
-      message += `- _${c.text}_\n`;
-    });
-  }
-
-  return message;
-};
-
-/**
- * Formata um relatório completo.
+ * Formata um relatório completo respeitando as visibilidades condicionais.
  */
 export const formatReportForWhatsApp = (report: Report, itemsWithMaybeSections?: ChecklistItem[]): string => {
   const dateStr = new Date(report.timestamp).toLocaleDateString('pt-BR');
@@ -92,7 +47,6 @@ export const formatReportForWhatsApp = (report: Report, itemsWithMaybeSections?:
   } else {
     const template = CHECKLIST_TEMPLATES[report.area] || [];
     let itemPointer = 0;
-    
     template.forEach((templateLabel, idx) => {
       if (templateLabel.startsWith('SECTION:')) {
         itemsToFormat.push({ id: `sec-${idx}`, label: templateLabel, status: 'ok' });
@@ -105,68 +59,108 @@ export const formatReportForWhatsApp = (report: Report, itemsWithMaybeSections?:
     });
   }
 
-  let isSectionDisabled = false;
+  let hideDueToNoFeed = false;
 
   itemsToFormat.forEach((item, index) => {
     if (item.label.startsWith('SECTION:')) {
       const sectionName = item.label.replace('SECTION:', '').trim();
-      message += `\n*${sectionName}*\n`;
-      isSectionDisabled = false; 
+      const sectionLower = sectionName.toLowerCase();
+      
+      if (hideDueToNoFeed && sectionLower.includes('equipamentos hbf')) hideDueToNoFeed = false;
+      
+      if (!hideDueToNoFeed || !sectionLower.includes('flotation columns')) {
+        message += `\n*${sectionName}*\n`;
+      }
     } else {
+      const labelLower = item.label.toLowerCase();
+      
       if (item.label === 'ALIMENTANDO COLUNAS?') {
-        const isOff = item.status === 'fail';
-        const statusEmoji = isOff ? '🔴' : '🟢';
-        message += `${item.label} ${statusEmoji} ${isOff ? 'NÃO ALIMENTANDO (STANDBY)' : 'SIM (OPERANDO)'}\n`;
-        if (isOff) isSectionDisabled = true;
+        const isFeeding = item.status === 'ok';
+        const feedStatus = isFeeding ? '🟢 SIM' : '🔴 NÃO';
+        const obs = item.observation ? `\n   └ 📝 _MOTIVO: ${item.observation.toUpperCase()}_` : '';
+        message += `${item.label} ${feedStatus}${obs}\n`;
+        hideDueToNoFeed = !isFeeding;
         return;
       }
 
-      if (isSectionDisabled) return;
-
-      let statusEmoji = '';
-      switch (item.status) {
-        case 'ok': statusEmoji = '🟢'; break;
-        case 'fail': statusEmoji = '🔴'; break;
-        case 'na': statusEmoji = '🟡'; break;
-        case 'warning': statusEmoji = '⚠️'; break;
-        default: statusEmoji = '⚪'; break;
+      if (hideDueToNoFeed) {
+        const isActuallyColumnItem = labelLower.includes('coluna') || 
+                                     labelLower.includes('-fc-') || 
+                                     labelLower.includes('frother') || 
+                                     labelLower.includes('colector') ||
+                                     labelLower.includes('feed rate colunas') ||
+                                     labelLower.includes('ar (kpa)') || 
+                                     labelLower.includes('nível (%)') || 
+                                     labelLower.includes('setpoint (%)');
+        if (isActuallyColumnItem) return;
       }
 
-      const labelLower = item.label.toLowerCase();
-      const isMeasurement = labelLower.includes('(m³/h)') || 
-                            labelLower.includes('(kpa)') || 
-                            labelLower.includes('(%)') || 
-                            labelLower.includes('(g/t)') || 
-                            labelLower.includes('(ppm)') || 
-                            labelLower.includes('(t/m³)') || 
-                            labelLower.includes('(l/min)') ||
-                            labelLower.includes('(tph)') ||
-                            labelLower.includes('(hz)');
-      
+      const isMeasurement = labelLower.includes('(m³/h)') || labelLower.includes('(kpa)') || labelLower.includes('(%)') || 
+                            labelLower.includes('(g/t)') || labelLower.includes('(ppm)') || labelLower.includes('(t/m³)') || 
+                            labelLower.includes('(l/min)') || labelLower.includes('(tph)') || labelLower.includes('(hz)');
       const isTextInput = labelLower.includes('ply') || labelLower.includes('linhas') || labelLower.includes('nota');
 
       if (isMeasurement || isTextInput) {
-        let suffix = '';
-        if (isMeasurement) {
-           // Lógica de alvo (actual == setpoint)
-           const isValActual = labelLower.includes('actual') || labelLower.includes('atual') || labelLower.includes('nível');
-           if (isValActual) {
-             const nextItem = itemsToFormat[index + 1];
-             if (nextItem && nextItem.label.toLowerCase().includes('setpoint') && item.observation && nextItem.observation) {
-               if (parseFloat(item.observation) === parseFloat(nextItem.observation)) suffix = ' 🎯';
-             }
+        let suffix = "";
+        
+        if (labelLower.includes('nível (%)')) {
+          const nextItem = itemsToFormat[index + 1];
+          if (nextItem && nextItem.label.toLowerCase().includes('setpoint (%)')) {
+            const valNivel = parseFloat(item.observation || "0");
+            const valSetpoint = parseFloat(nextItem.observation || "0");
+            if (item.observation && nextItem.observation) {
+               suffix = valNivel === valSetpoint ? " 🟢" : " 🔴";
+            }
+          }
+        } else if (labelLower.includes('setpoint (%)')) {
+           const prevItem = itemsToFormat[index - 1];
+           if (prevItem && prevItem.label.toLowerCase().includes('nível (%)')) {
+              const valNivel = parseFloat(prevItem.observation || "0");
+              const valSetpoint = parseFloat(item.observation || "0");
+              if (item.observation && prevItem.observation) {
+                suffix = valNivel === valSetpoint ? " 🟢" : " 🔴";
+              }
            }
         }
+
         message += `${item.label}: ${item.observation || '---'}${suffix}\n`;
       } else {
+        let statusEmoji = '';
+        const obsLower = (item.observation || '').toLowerCase();
+
+        // Mapeamento v9.0 de Emojis
+        if (obsLower === 'ok' || obsLower === 'no lugar' || obsLower === 'sim' || obsLower === 'com retorno' || obsLower === 'limpa') {
+          statusEmoji = '🟢';
+        } else if (obsLower === 'anormal' || obsLower === 'fora do lugar' || obsLower === 'não' || obsLower === 'sem retorno' || obsLower === 'suja') {
+          statusEmoji = '🔴';
+        } else if (obsLower === 'turva') {
+          statusEmoji = '🟡';
+        } else if (obsLower === 'aberta' || obsLower === 'aberto') {
+          statusEmoji = (labelLower.includes('diluicao') || labelLower.includes('corse')) ? '⚠️' : '🔵';
+        } else if (obsLower === 'fechada' || obsLower === 'fechado') {
+          statusEmoji = (labelLower.includes('diluicao') || labelLower.includes('corse')) ? '🟢' : '⚪';
+        } else {
+          switch (item.status) {
+            case 'ok': statusEmoji = '🟢'; break;
+            case 'fail': statusEmoji = '🔴'; break;
+            case 'na': statusEmoji = '🟡'; break;
+            case 'warning': statusEmoji = '⚠️'; break;
+            default: statusEmoji = '⚪'; break;
+          }
+        }
+
         let obsText = '';
         if (item.observation) {
           const cleanObs = item.observation.trim();
-          const autoTexts = ['OK', 'RODANDO', 'SIM', 'STANDBY', 'NÃO', 'ABERTO', 'FECHADO', 'SEM RETORNO', 'COM RETORNO', 'NO lugar', 'Fora do lugar', 'BOM', 'TURVA', 'RUIM'];
-          if (!autoTexts.includes(cleanObs)) {
+          const autoTexts = [
+            'OK', 'RODANDO', 'SIM', 'STANDBY', 'NÃO', 'ABERTO', 'ABERTA', 'FECHADO', 'FECHADA', 
+            'SEM RETORNO', 'COM RETORNO', 'BOM', 'TURVA', 'RUIM', 'NO LUGAR', 'FORA DO LUGAR', 
+            'ANORMAL', 'LIMPA', 'SUJA'
+          ];
+          if (!autoTexts.includes(cleanObs.toUpperCase())) {
             obsText = `\n   └ 📝 _MOTIVO: ${cleanObs.toUpperCase()}_`;
           } else {
-             obsText = ` ${cleanObs}`;
+             obsText = ` ${cleanObs.toUpperCase()}`;
           }
         }
         message += `${item.label} ${statusEmoji}${obsText}\n`;
@@ -175,11 +169,8 @@ export const formatReportForWhatsApp = (report: Report, itemsWithMaybeSections?:
   });
 
   if (report.generalObservations) {
-    message += `\n📝 *PASSAGEM DE TURNO / OBSERVAÇÕES*\n${report.generalObservations.toUpperCase()}\n`;
+    message += `\n📝 *OBSERVAÇÕES/PASSAGEM*\n${report.generalObservations.toUpperCase()}\n`;
   }
-
-  message += `\n📌 *LEGENDA SCADA*\n🟢 RODANDO | 🔴 PARADO | 🟡 STANDBY | ⚠️ ANOMALIA`;
-
   return message;
 };
 
@@ -203,6 +194,7 @@ export const copyToClipboard = async (text: string): Promise<boolean> => {
       return success;
     }
   } catch (err) {
+    console.error("Copy failed", err);
     return false;
   }
 };
