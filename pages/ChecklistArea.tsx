@@ -54,7 +54,7 @@ const ChecklistArea: React.FC<ChecklistAreaProps> = ({ onSaveReport }) => {
         label,
         status: 'ok',
         discipline: 'OPERAÇÃO',
-        observation: label.startsWith('SECTION:') ? '' : 'OK'
+        observation: '' // REMOVIDO "OK" AUTOMÁTICO - AGORA INICIA VAZIO
       })));
     }
   }, [currentArea]);
@@ -122,11 +122,8 @@ const ChecklistArea: React.FC<ChecklistAreaProps> = ({ onSaveReport }) => {
 
       if (!isHeader && !isMeasurement && !isTextInput && (item.status === 'fail' || item.status === 'warning')) {
         const obs = item.observation?.trim() || '';
-        const autoTexts = [
-          'NÃO', 'FECHADO', 'TURVA', 'RUIM', 'SEM RETORNO', 'SIM', 'FORA DO LUGAR', 
-          'ANORMAL', 'OK', 'NO LUGAR', 'COM RETORNO', 'ABERTA', 'FECHADA', 'LIMPA', 'SUJA'
-        ];
-        return obs === '' || autoTexts.includes(obs.toUpperCase());
+        // Se a observação estiver vazia e for falha/aviso, exige preenchimento (exceto itens simplificados)
+        return obs === '';
       }
       return false;
     });
@@ -253,7 +250,7 @@ const ChecklistArea: React.FC<ChecklistAreaProps> = ({ onSaveReport }) => {
 
     return (
       <div className="flex bg-slate-100 p-1 rounded-lg border border-slate-200 shadow-inner">
-        <button type="button" onClick={() => updateItemStatus(item.id, 'ok', 'OK')} className={`px-4 py-2 rounded-md text-[10px] font-black uppercase transition-all ${item.status === 'ok' ? 'bg-emerald-500 text-white shadow-md' : 'text-slate-500 hover:text-slate-700'}`}>OK</button>
+        <button type="button" onClick={() => updateItemStatus(item.id, 'ok', '')} className={`px-4 py-2 rounded-md text-[10px] font-black uppercase transition-all ${item.status === 'ok' ? 'bg-emerald-500 text-white shadow-md' : 'text-slate-500 hover:text-slate-700'}`}>OK</button>
         <button type="button" onClick={() => updateItemStatus(item.id, 'na', 'STANDBY')} className={`px-4 py-2 rounded-md text-[10px] font-black uppercase transition-all ${item.status === 'na' ? 'bg-slate-500 text-white shadow-md' : 'text-slate-500 hover:text-slate-700'}`}>SBY</button>
         <button type="button" onClick={() => updateItemStatus(item.id, 'fail')} className={`px-4 py-2 rounded-md text-[10px] font-black uppercase transition-all ${item.status === 'fail' ? 'bg-red-500 text-white shadow-md' : 'text-slate-500 hover:text-slate-700'}`}>FALHA</button>
         <button type="button" onClick={() => updateItemStatus(item.id, 'warning')} className={`px-4 py-2 rounded-md text-[10px] font-black uppercase transition-all ${item.status === 'warning' ? 'bg-amber-500 text-white shadow-md' : 'text-slate-500 hover:text-slate-700'}`}>ANOM</button>
@@ -384,7 +381,7 @@ const ChecklistArea: React.FC<ChecklistAreaProps> = ({ onSaveReport }) => {
                           <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest block">
                             {item.label === 'ALIMENTANDO COLUNAS?' ? 'JUSTIFICATIVA PARA NÃO ALIMENTAR' : 'Descrição Técnica da Falha'}
                           </label>
-                          <textarea placeholder={item.label === 'ALIMENTANDO COLUNAS?' ? "DESCREVA O MOTIVO DA PARADA..." : "DESCREVA O PROBLEMA COM DETALHES..."} value={item.observation} onChange={(e) => updateItemObservation(item.id, e.target.value.toUpperCase())} className="w-full p-5 bg-white border-2 border-slate-200 rounded-2xl text-[11px] font-black uppercase outline-none focus:border-red-400 transition-all shadow-inner" rows={3} />
+                          <textarea placeholder={item.label === 'ALIMENTANDO COLUNAS?' ? "DESCREVA O MOTIVO DA PARADA..." : "DESCREVA O PROBLEMA COM DETALHES..."} value={item.observation || ''} onChange={(e) => updateItemObservation(item.id, e.target.value.toUpperCase())} className="w-full p-5 bg-white border-2 border-slate-200 rounded-2xl text-[11px] font-black uppercase outline-none focus:border-red-400 transition-all shadow-inner" rows={3} />
                         </div>
                       </div>
                     )}
