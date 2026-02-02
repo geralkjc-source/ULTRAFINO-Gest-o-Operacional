@@ -1,25 +1,28 @@
 
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { 
-  ArrowLeft,
-  CheckCircle2,
-  Check as CheckIcon,
-  ShieldAlert,
-  Target,
-  AlertTriangle,
-  StickyNote,
-  RotateCcw,
-  Send,
-  Wrench,
-  Zap as ZapIcon,
-  Cpu,
-  UserCog,
-  Copy
-} from 'lucide-react';
 import { Area, Turma, Turno, ChecklistItem, Report, Discipline } from '../types';
 import { CHECKLIST_TEMPLATES } from '../constants';
 import { formatReportForWhatsApp, shareToWhatsApp, copyToClipboard } from '../services/whatsappShare';
+
+// Standard Lucide icons since the previous code had incorrect import paths in provided context
+import { 
+  ArrowLeft as ArrowLeftIcon,
+  CheckCircle2 as CheckCircleIcon,
+  Check as CheckIconStandard,
+  ShieldAlert as ShieldAlertIcon,
+  Target as TargetIcon,
+  AlertTriangle as AlertTriangleIcon,
+  StickyNote as StickyNoteIcon,
+  RotateCcw as RotateCcwIcon,
+  Send as SendIcon,
+  Wrench as WrenchIcon,
+  Zap as ZapIconStandard,
+  Cpu as CpuIcon,
+  UserCog as UserCogIcon,
+  Copy as CopyIcon,
+  Clock as ClockIcon
+} from 'lucide-react';
 
 interface ChecklistAreaProps {
   onSaveReport: (report: Report) => void;
@@ -50,8 +53,8 @@ const ChecklistArea: React.FC<ChecklistAreaProps> = ({ onSaveReport }) => {
         id: `item-${index}`,
         label,
         status: 'ok',
-        discipline: 'MECÂNICA',
-        observation: ''
+        discipline: 'OPERAÇÃO',
+        observation: label.startsWith('SECTION:') ? '' : 'OK'
       })));
     }
   }, [currentArea]);
@@ -65,7 +68,7 @@ const ChecklistArea: React.FC<ChecklistAreaProps> = ({ onSaveReport }) => {
     // Atribuição automática de disciplina
     let autoDiscipline: Discipline = 'OPERAÇÃO';
     const labelLower = item?.label.toLowerCase() || '';
-    if (labelLower.includes('sprays') || labelLower.includes('v-belts') || labelLower.includes('pano') || labelLower.includes('underpan') || labelLower.includes('resguardos')) {
+    if (labelLower.includes('sprays') || labelLower.includes('pano') || labelLower.includes('underpan') || labelLower.includes('resguardos')) {
       autoDiscipline = 'MECÂNICA';
     } else if (labelLower.includes('valvula') || labelLower.includes('corse') || labelLower.includes('retorno') || labelLower.includes('qualidade água')) {
       autoDiscipline = 'OPERAÇÃO';
@@ -96,6 +99,13 @@ const ChecklistArea: React.FC<ChecklistAreaProps> = ({ onSaveReport }) => {
       const isHeader = item.label.startsWith('SECTION:');
       const labelLower = item.label.toLowerCase();
       
+      // ISENÇÃO DE JUSTIFICATIVA: Itens de Sistemas Auxiliares (Retorno, Válvulas, Corse) não precisam de texto manual
+      if (labelLower.includes('retorno do tanque 104') || 
+          labelLower.includes('corse seeding') || 
+          labelLower.includes('valvula de diluicao')) {
+        return false;
+      }
+
       if (item.label === 'ALIMENTANDO COLUNAS?' && item.status === 'fail') {
         return !item.observation || item.observation === 'NÃO' || item.observation.trim() === '';
       }
@@ -106,7 +116,8 @@ const ChecklistArea: React.FC<ChecklistAreaProps> = ({ onSaveReport }) => {
 
       const isMeasurement = labelLower.includes('(m³/h)') || labelLower.includes('(%)') || labelLower.includes('(kpa)') || 
                             labelLower.includes('(tph)') || labelLower.includes('(g/t)') || labelLower.includes('(hz)') || 
-                            labelLower.includes('(ppm)') || labelLower.includes('(t/m³)') || labelLower.includes('(l/min)');
+                            labelLower.includes('(ppm)') || labelLower.includes('(t/m³)') || labelLower.includes('(l/min)') ||
+                            labelLower.includes('(mm)');
       const isTextInput = labelLower.includes('ply') || labelLower.includes('linhas') || labelLower.includes('nota');
 
       if (!isHeader && !isMeasurement && !isTextInput && (item.status === 'fail' || item.status === 'warning')) {
@@ -170,7 +181,6 @@ const ChecklistArea: React.FC<ChecklistAreaProps> = ({ onSaveReport }) => {
   const renderItemControl = (item: ChecklistItem) => {
     const labelLower = item.label.toLowerCase();
     
-    // Controles Customizados Ultrafino v9.0
     if (labelLower.includes('condições dos resguardos')) {
        return (
         <div className="flex bg-slate-100 p-1 rounded-xl border border-slate-200">
@@ -180,7 +190,7 @@ const ChecklistArea: React.FC<ChecklistAreaProps> = ({ onSaveReport }) => {
       );
     }
 
-    if (labelLower.includes('sprays') || labelLower.includes('v-belts') || labelLower.includes('pano') || labelLower.includes('underpan')) {
+    if (labelLower.includes('sprays') || labelLower.includes('pano') || labelLower.includes('underpan')) {
        return (
         <div className="flex bg-slate-100 p-1 rounded-xl border border-slate-200">
           <button type="button" onClick={() => updateItemStatus(item.id, 'ok', 'OK')} className={`px-6 py-2 rounded-lg text-[9px] font-black uppercase transition-all ${item.observation === 'OK' ? 'bg-emerald-600 text-white shadow-lg' : 'text-slate-500'}`}>OK</button>
@@ -222,14 +232,15 @@ const ChecklistArea: React.FC<ChecklistAreaProps> = ({ onSaveReport }) => {
       return (
         <div className="flex bg-slate-100 p-1 rounded-xl border border-slate-200 shadow-inner">
           <button type="button" onClick={() => updateItemStatus(item.id, 'ok', 'SIM')} className={`px-8 py-3 rounded-lg text-xs font-black uppercase transition-all ${item.status === 'ok' ? 'bg-emerald-600 text-white shadow-lg' : 'text-slate-500 hover:text-slate-700'}`}>SIM</button>
-          <button type="button" onClick={() => updateItemStatus(item.id, 'fail', '')} className={`px-8 py-3 rounded-lg text-xs font-black uppercase transition-all ${item.status === 'fail' ? 'bg-red-600 text-white shadow-lg' : 'text-slate-500 hover:text-slate-700'}`}>NÃO</button>
+          <button type="button" onClick={() => updateItemStatus(item.id, 'fail', 'NÃO')} className={`px-8 py-3 rounded-lg text-xs font-black uppercase transition-all ${item.status === 'fail' ? 'bg-red-600 text-white shadow-lg' : 'text-slate-500 hover:text-slate-700'}`}>NÃO</button>
         </div>
       );
     }
 
     const isMeasurement = labelLower.includes('(m³/h)') || labelLower.includes('(%)') || labelLower.includes('(kpa)') || 
                           labelLower.includes('(tph)') || labelLower.includes('(g/t)') || labelLower.includes('(hz)') || 
-                          labelLower.includes('(ppm)') || labelLower.includes('(t/m³)') || labelLower.includes('(l/min)');
+                          labelLower.includes('(ppm)') || labelLower.includes('(t/m³)') || labelLower.includes('(l/min)') ||
+                          labelLower.includes('(mm)');
     const isTextInput = labelLower.includes('ply') || labelLower.includes('linhas') || labelLower.includes('nota');
 
     if (isMeasurement || isTextInput) {
@@ -253,18 +264,18 @@ const ChecklistArea: React.FC<ChecklistAreaProps> = ({ onSaveReport }) => {
   let skipDueToNoFeed = false;
 
   return (
-    <div className="max-w-4xl mx-auto space-y-8 animate-in fade-in duration-500">
+    <div className="max-w-4xl mx-auto space-y-8 animate-in fade-in duration-500 pb-20">
       {showSuccessModal && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
           <div className="bg-white rounded-[2.5rem] p-10 max-w-md w-full shadow-2xl text-center space-y-8">
-            <div className="w-24 h-24 bg-emerald-50 text-emerald-500 rounded-full flex items-center justify-center mx-auto mb-4 border-4 border-emerald-100 animate-bounce"><CheckCircle2 size={56} /></div>
+            <div className="w-24 h-24 bg-emerald-50 text-emerald-500 rounded-full flex items-center justify-center mx-auto mb-4 border-4 border-emerald-100 animate-bounce"><CheckCircleIcon size={56} /></div>
             <div className="space-y-2">
               <h2 className="text-3xl font-black text-slate-900 uppercase tracking-tighter">Relatório Concluído!</h2>
-              <p className="text-slate-500 text-[10px] font-bold uppercase tracking-widest">Base de dados v9.0 Stable atualizada.</p>
+              <p className="text-slate-500 text-[10px] font-bold uppercase tracking-widest">Base de dados v9.2 Stable atualizada.</p>
             </div>
             <div className="flex flex-col gap-3">
-              <button onClick={handleShareWhatsApp} className="w-full bg-[#25D366] hover:bg-[#128C7E] text-white py-5 rounded-[1.5rem] font-black uppercase tracking-widest flex items-center justify-center gap-3 transition-all shadow-xl shadow-emerald-500/20 active:scale-95"><Send size={20} /> Compartilhar Agora</button>
-              <button onClick={handleCopyText} className={`w-full py-5 rounded-[1.5rem] font-black uppercase tracking-widest flex items-center justify-center gap-3 transition-all shadow-xl border-2 active:scale-95 ${copyFeedback ? 'bg-emerald-500 text-white border-emerald-500' : 'bg-white text-slate-900 border-slate-100 hover:border-slate-300'}`}>{copyFeedback ? <CheckIcon size={20} /> : <Copy size={20} />}{copyFeedback ? 'Copiado!' : 'Copiar Texto'}</button>
+              <button onClick={handleShareWhatsApp} className="w-full bg-[#25D366] hover:bg-[#128C7E] text-white py-5 rounded-[1.5rem] font-black uppercase tracking-widest flex items-center justify-center gap-3 transition-all shadow-xl shadow-emerald-500/20 active:scale-95"><SendIcon size={20} /> Compartilhar Agora</button>
+              <button onClick={handleCopyText} className={`w-full py-5 rounded-[1.5rem] font-black uppercase tracking-widest flex items-center justify-center gap-3 transition-all shadow-xl border-2 active:scale-95 ${copyFeedback ? 'bg-emerald-500 text-white border-emerald-500' : 'bg-white text-slate-900 border-slate-100 hover:border-slate-300'}`}>{copyFeedback ? <CheckIconStandard size={20} /> : <CopyIcon size={20} />}{copyFeedback ? 'Copiado!' : 'Copiar Texto'}</button>
               <button onClick={() => navigate('/history')} className="w-full text-slate-400 py-3 font-black text-[10px] uppercase tracking-widest hover:text-slate-600">Ver Histórico de Turnos</button>
             </div>
           </div>
@@ -272,31 +283,39 @@ const ChecklistArea: React.FC<ChecklistAreaProps> = ({ onSaveReport }) => {
       )}
 
       <div className="flex items-center justify-between">
-        <button onClick={() => navigate(-1)} className="flex items-center gap-2 text-slate-500 hover:text-slate-800 font-black uppercase text-[10px] tracking-widest transition-colors"><ArrowLeft size={16} /> Voltar</button>
+        <button onClick={() => navigate(-1)} className="flex items-center gap-2 text-slate-500 hover:text-slate-800 font-black uppercase text-[10px] tracking-widest transition-colors"><ArrowLeftIcon size={16} /> Voltar</button>
         <div className="text-right">
           <h1 className="text-3xl font-black text-slate-900 tracking-tighter uppercase">{currentArea}</h1>
-          <p className="text-slate-400 text-[9px] font-bold uppercase tracking-[0.2em] mt-1">Checklist Operação v9.0 Stable</p>
+          <p className="text-slate-400 text-[9px] font-bold uppercase tracking-[0.2em] mt-1">Checklist Operação v9.2 Stable</p>
         </div>
       </div>
 
       {validationError && (
         <div className="bg-red-50 border-2 border-red-100 p-6 rounded-2xl flex items-center gap-4 text-red-600 animate-shake shadow-lg shadow-red-500/5">
-          <AlertTriangle className="shrink-0" size={24} />
+          <AlertTriangleIcon className="shrink-0" size={24} />
           <p className="font-black text-[11px] uppercase tracking-wider leading-relaxed">{validationError}</p>
         </div>
       )}
 
       <form onSubmit={handleSubmit} className="space-y-8 pb-12">
-        <div className="bg-white p-8 rounded-[2.5rem] border-2 border-slate-100 shadow-sm grid grid-cols-1 md:grid-cols-2 gap-8">
+        <div className="bg-white p-8 rounded-[2.5rem] border-2 border-slate-100 shadow-sm grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
           <div className="space-y-3">
-            <label className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] flex items-center gap-2"><UserCog size={14} className="text-blue-500" /> Identificação do Operador</label>
-            <input type="text" required placeholder="DIGITE SEU NOME..." value={operator} onChange={(e) => setOperator(e.target.value)} className="w-full px-6 py-4 bg-slate-50 border-2 border-slate-100 rounded-2xl outline-none font-black uppercase text-sm focus:border-blue-500 focus:bg-white transition-all shadow-inner" />
+            <label className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] flex items-center gap-2"><UserCogIcon size={14} className="text-blue-500" /> Identificação</label>
+            <input type="text" required placeholder="DIGITE SEU NOME..." value={operator} onChange={(e) => setOperator(e.target.value.toUpperCase())} className="w-full px-6 py-4 bg-slate-50 border-2 border-slate-100 rounded-2xl outline-none font-black uppercase text-sm focus:border-blue-500 focus:bg-white transition-all shadow-inner" />
           </div>
           <div className="space-y-3">
-            <label className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] flex items-center gap-2"><Target size={14} className="text-blue-500" /> Turma de Trabalho</label>
+            <label className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] flex items-center gap-2"><TargetIcon size={14} className="text-blue-500" /> Turma</label>
             <div className="flex gap-2">
               {(['A', 'B', 'C', 'D'] as Turma[]).map(t => (
                 <button key={t} type="button" onClick={() => setTurma(t)} className={`flex-1 py-4 rounded-2xl font-black text-xs transition-all border-2 active:scale-95 ${turma === t ? 'bg-blue-600 border-blue-600 text-white shadow-lg shadow-blue-500/20' : 'bg-white border-slate-100 text-slate-400 hover:border-slate-200'}`}>{t}</button>
+              ))}
+            </div>
+          </div>
+          <div className="space-y-3">
+            <label className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] flex items-center gap-2"><ClockIcon size={14} className="text-blue-500" /> Turno</label>
+            <div className="flex gap-1">
+              {(['MANHÃ', 'TARDE', 'NOITE'] as Turno[]).map(t => (
+                <button key={t} type="button" onClick={() => setTurno(t)} className={`flex-1 py-4 rounded-2xl font-black text-[9px] transition-all border-2 active:scale-95 ${turno === t ? 'bg-blue-600 border-blue-600 text-white shadow-lg shadow-blue-500/10' : 'bg-white border-slate-100 text-slate-400 hover:border-slate-200'}`}>{t}</button>
               ))}
             </div>
           </div>
@@ -321,8 +340,12 @@ const ChecklistArea: React.FC<ChecklistAreaProps> = ({ onSaveReport }) => {
             const isFailOrWarning = item.status === 'fail' || item.status === 'warning';
             const isNoFeedButNeedsObs = item.label === 'ALIMENTANDO COLUNAS?' && item.status === 'fail';
             
-            // Simplificação: Não mostrar disciplina para subconjuntos HBF e sistemas auxiliares
-            const isSimplifiedItem = labelLower.includes('sprays') || labelLower.includes('v-belts') || labelLower.includes('pano') || labelLower.includes('underpan') || labelLower.includes('resguardos') || labelLower.includes('valvula') || labelLower.includes('corse') || labelLower.includes('retorno') || labelLower.includes('qualidade água') || item.label === 'ALIMENTANDO COLUNAS?';
+            // ISENÇÃO DE CAMPOS: Itens de Sistemas Auxiliares e controle de alimentação de colunas
+            const isAuxiliaryItem = labelLower.includes('retorno do tanque 104') || 
+                                    labelLower.includes('corse seeding') || 
+                                    labelLower.includes('valvula de diluicao');
+                                    
+            const isSimplifiedItem = labelLower.includes('sprays') || labelLower.includes('pano') || labelLower.includes('underpan') || labelLower.includes('resguardos') || labelLower.includes('qualidade água') || item.label === 'ALIMENTANDO COLUNAS?';
             
             return (
               <div key={item.id} className={`p-8 space-y-6 transition-colors ${isHeader ? 'bg-slate-50/80 backdrop-blur-sm' : 'hover:bg-slate-50/30'}`}>
@@ -340,17 +363,17 @@ const ChecklistArea: React.FC<ChecklistAreaProps> = ({ onSaveReport }) => {
                       {renderItemControl(item)}
                     </div>
                     
-                    {(isFailOrWarning || isNoFeedButNeedsObs) && (
+                    {(isFailOrWarning || isNoFeedButNeedsObs) && !isAuxiliaryItem && (
                       <div className="p-6 bg-slate-50 rounded-[2rem] space-y-6 border-2 border-slate-100 animate-in slide-in-from-top-4 duration-300">
                         {isFailOrWarning && !isSimplifiedItem && (
                           <div className="space-y-4">
-                            <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest block flex items-center gap-2"><ShieldAlert size={14} className="text-red-500" /> Setor Responsável pela Anomalia</label>
+                            <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest block flex items-center gap-2"><ShieldAlertIcon size={14} className="text-red-500" /> Setor Responsável pela Anomalia</label>
                             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                               {[
-                                { id: 'MECÂNICA', icon: <Wrench size={12} />, color: 'bg-orange-500' },
-                                { id: 'ELÉTRICA', icon: <ZapIcon size={12} />, color: 'bg-blue-500' },
-                                { id: 'INSTRUMENTAÇÃO', icon: <Cpu size={12} />, color: 'bg-purple-500' },
-                                { id: 'OPERAÇÃO', icon: <UserCog size={12} />, color: 'bg-emerald-500' }
+                                { id: 'MECÂNICA', icon: <WrenchIcon size={12} />, color: 'bg-orange-500' },
+                                { id: 'ELÉTRICA', icon: <ZapIconStandard size={12} />, color: 'bg-blue-500' },
+                                { id: 'INSTRUMENTAÇÃO', icon: <CpuIcon size={12} />, color: 'bg-purple-500' },
+                                { id: 'OPERAÇÃO', icon: <UserCogIcon size={12} />, color: 'bg-emerald-500' }
                               ].map(disc => (
                                 <button key={disc.id} type="button" onClick={() => updateItemDiscipline(item.id, disc.id as Discipline)} className={`flex items-center justify-center gap-2 py-3 rounded-xl text-[9px] font-black uppercase border-2 transition-all active:scale-95 ${item.discipline === disc.id ? `${disc.color} text-white border-transparent shadow-lg` : 'bg-white text-slate-400 border-slate-200 hover:border-slate-300'}`}>{disc.icon} {disc.id}</button>
                               ))}
@@ -361,7 +384,7 @@ const ChecklistArea: React.FC<ChecklistAreaProps> = ({ onSaveReport }) => {
                           <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest block">
                             {item.label === 'ALIMENTANDO COLUNAS?' ? 'JUSTIFICATIVA PARA NÃO ALIMENTAR' : 'Descrição Técnica da Falha'}
                           </label>
-                          <textarea placeholder={item.label === 'ALIMENTANDO COLUNAS?' ? "DESCREVA O MOTIVO DA PARADA..." : "DESCREVA O PROBLEMA COM DETALHES..."} value={item.observation} onChange={(e) => updateItemObservation(item.id, e.target.value)} className="w-full p-5 bg-white border-2 border-slate-200 rounded-2xl text-[11px] font-black uppercase outline-none focus:border-red-400 transition-all shadow-inner" rows={3} />
+                          <textarea placeholder={item.label === 'ALIMENTANDO COLUNAS?' ? "DESCREVA O MOTIVO DA PARADA..." : "DESCREVA O PROBLEMA COM DETALHES..."} value={item.observation} onChange={(e) => updateItemObservation(item.id, e.target.value.toUpperCase())} className="w-full p-5 bg-white border-2 border-slate-200 rounded-2xl text-[11px] font-black uppercase outline-none focus:border-red-400 transition-all shadow-inner" rows={3} />
                         </div>
                       </div>
                     )}
@@ -373,13 +396,13 @@ const ChecklistArea: React.FC<ChecklistAreaProps> = ({ onSaveReport }) => {
         </div>
 
         <div className="bg-white p-8 rounded-[2.5rem] border-2 border-slate-100 shadow-sm space-y-4">
-           <label className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] flex items-center gap-2"><StickyNote size={14} className="text-blue-500" /> Observações Gerais / Passagem de Turno</label>
-           <textarea placeholder="REGISTRE AQUI PONTOS DE ATENÇÃO PARA O PRÓXIMO TURNO..." value={observations} onChange={(e) => setObservations(e.target.value)} className="w-full p-6 bg-slate-50 border-2 border-slate-100 rounded-[2rem] text-xs font-black uppercase outline-none focus:border-blue-500 focus:bg-white transition-all shadow-inner" rows={4} />
+           <label className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] flex items-center gap-2"><StickyNoteIcon size={14} className="text-blue-500" /> Observações Gerais / Passagem de Turno</label>
+           <textarea placeholder="REGISTRE AQUI PONTOS DE ATENÇÃO PARA O PRÓXIMO TURNO..." value={observations} onChange={(e) => setObservations(e.target.value.toUpperCase())} className="w-full p-6 bg-slate-50 border-2 border-slate-100 rounded-[2rem] text-xs font-black uppercase outline-none focus:border-blue-500 focus:bg-white transition-all shadow-inner" rows={4} />
         </div>
 
         <button type="submit" disabled={isSubmitting} className="w-full py-6 rounded-[2rem] bg-slate-900 text-white font-black uppercase tracking-[0.3em] flex items-center justify-center gap-4 shadow-2xl hover:bg-slate-800 transition-all active:scale-95 disabled:opacity-50 text-sm">
-          {isSubmitting ? <RotateCcw size={20} className="animate-spin" /> : <Send size={20} />}
-          {isSubmitting ? 'PROCESSANDO...' : 'TRANSMITIR RELATÓRIO v9.0'}
+          {isSubmitting ? <RotateCcwIcon size={20} className="animate-spin" /> : <SendIcon size={20} />}
+          {isSubmitting ? 'PROCESSANDO...' : 'TRANSMITIR RELATÓRIO v9.2'}
         </button>
       </form>
     </div>

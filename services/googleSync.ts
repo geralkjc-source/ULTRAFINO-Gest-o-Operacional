@@ -1,7 +1,7 @@
 
 import { Report, PendingItem, Area } from '../types';
 
-export const DEFAULT_SCRIPT_URL = ''; 
+export const DEFAULT_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbym_-kqwLU8aKVVx9S7EePs8NzDv36NdsW3vWQV8jGEuD0beV2BcpxEZRXWvqJ3_PHNSg/exec'; 
 export const MASTER_SHEET_URL = 'https://docs.google.com/spreadsheets/d/1ZFYCWEIXJMNB3eMc7HhttchcsBRcG0Xa5LigMeeijvU/edit?usp=sharing';
 
 export interface SyncResponse {
@@ -26,13 +26,13 @@ export const testScriptConnection = async (url: string): Promise<{success: boole
     const response = await fetch(`${url}?action=test&t=${Date.now()}`, { method: 'GET', mode: 'cors' }).catch(() => null);
     if (!response) {
        // Fallback para no-cors se o servidor não suportar OPTIONS
-       return { success: true, message: "Handshake v1.3 Stable (Modo Blindado)" };
+       return { success: true, message: "Handshake v1.4 Stable (Modo Blindado)" };
     }
     const text = await response.text();
-    if (text.includes("v1.3_stable") || text.includes("v1.2_stable") || text.includes("v1.0_stable") || text.includes("SUCCESS")) {
-      return { success: true, message: "Conexão v1.3 Stable Estabelecida!" };
+    if (text.includes("v1.4_stable") || text.includes("v1.3_stable") || text.includes("v1.2_stable") || text.includes("v1.0_stable") || text.includes("SUCCESS")) {
+      return { success: true, message: "Conexão v1.4 Stable Estabelecida!" };
     }
-    return { success: false, message: "Script incompatível. Atualize para v1.3 Stable." };
+    return { success: false, message: "Script incompatível. Atualize para v1.4 Stable." };
   } catch (error) {
     return { success: false, message: "Falha de comunicação." };
   }
@@ -54,7 +54,7 @@ export const syncToGoogleSheets = async (
 
     const payload = {
       action: "sync",
-      version: "1.3_stable",
+      version: "1.4_stable",
       mes_referencia: mesReferencia,
       reports: (reports || []).map(r => ({
         id: r.id,
@@ -92,7 +92,7 @@ export const syncToGoogleSheets = async (
       body: JSON.stringify(payload),
     });
 
-    return { success: true, message: "Sincronizado v1.3 Stable!" };
+    return { success: true, message: "Sincronizado v1.4 Stable!" };
   } catch (error) {
     console.error("Sync Service Error:", error);
     return { success: false, message: "Erro de Rede." };

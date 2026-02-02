@@ -97,7 +97,8 @@ export const formatReportForWhatsApp = (report: Report, itemsWithMaybeSections?:
 
       const isMeasurement = labelLower.includes('(m³/h)') || labelLower.includes('(kpa)') || labelLower.includes('(%)') || 
                             labelLower.includes('(g/t)') || labelLower.includes('(ppm)') || labelLower.includes('(t/m³)') || 
-                            labelLower.includes('(l/min)') || labelLower.includes('(tph)') || labelLower.includes('(hz)');
+                            labelLower.includes('(l/min)') || labelLower.includes('(tph)') || labelLower.includes('(hz)') ||
+                            labelLower.includes('(mm)');
       const isTextInput = labelLower.includes('ply') || labelLower.includes('linhas') || labelLower.includes('nota');
 
       if (isMeasurement || isTextInput) {

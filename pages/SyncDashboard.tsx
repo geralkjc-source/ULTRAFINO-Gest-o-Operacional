@@ -34,7 +34,7 @@ interface SyncDashboardProps {
 
 const SyncDashboard: React.FC<SyncDashboardProps> = ({ reports, pendingItems, onSyncSuccess }) => {
   const [isSyncing, setIsSyncing] = useState(false);
-  const [scriptUrl, setScriptUrl] = useState(localStorage.getItem('google_apps_script_url') || '');
+  const [scriptUrl, setScriptUrl] = useState(localStorage.getItem('google_apps_script_url') || DEFAULT_SCRIPT_URL);
   const [showConfig, setshowConfig] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
   const [password, setPassword] = useState('');
