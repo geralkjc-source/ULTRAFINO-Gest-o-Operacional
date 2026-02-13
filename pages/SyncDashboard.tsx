@@ -247,7 +247,7 @@ function doGet(e) {
                 </div>
                 <div className="p-6 bg-blue-50/50 rounded-2xl border border-blue-100">
                   <p className="text-[10px] font-black text-blue-600 uppercase">Fidelidade Time</p>
-                  <p className="text-xl font-black text-slate-900 uppercase text-[10px] mt-1">PLANILHA -> APP ACTIVE</p>
+                  <p className="text-xl font-black text-slate-900 uppercase text-[10px] mt-1">PLANILHA &rarr; APP ACTIVE</p>
                 </div>
               </div>
 
