@@ -4,8 +4,9 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { Area, Turma, Turno, ChecklistItem, Report, Discipline } from '../types';
 import { CHECKLIST_TEMPLATES } from '../constants';
 import { formatReportForWhatsApp, shareToWhatsApp, copyToClipboard } from '../services/whatsappShare';
+import { getCurrentShiftInfo } from '../services/shiftService';
 
-// Standard Lucide icons since the previous code had incorrect import paths in provided context
+// Standard Lucide icons
 import { 
   ArrowLeft as ArrowLeftIcon,
   CheckCircle2 as CheckCircleIcon,
@@ -21,7 +22,9 @@ import {
   Cpu as CpuIcon,
   UserCog as UserCogIcon,
   Copy as CopyIcon,
-  Clock as ClockIcon
+  Clock as ClockIcon,
+  Lock,
+  Zap
 } from 'lucide-react';
 
 interface ChecklistAreaProps {
@@ -34,8 +37,7 @@ const ChecklistArea: React.FC<ChecklistAreaProps> = ({ onSaveReport }) => {
   const currentArea = areaName ? decodeURIComponent(areaName) as Area : Area.DFP2;
   
   const [operator, setOperator] = useState('');
-  const [turma, setTurma] = useState<Turma>('A');
-  const [turno, setTurno] = useState<Turno>('MANHÃ');
+  const [detectedScale, setDetectedScale] = useState<{ turma: Turma; turno: Turno }>(getCurrentShiftInfo());
   const [items, setItems] = useState<ChecklistItem[]>([]);
   const [observations, setObservations] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -43,8 +45,15 @@ const ChecklistArea: React.FC<ChecklistAreaProps> = ({ onSaveReport }) => {
   const [lastSavedReport, setLastSavedReport] = useState<Report | null>(null);
   const [validationError, setValidationError] = useState<string | null>(null);
   const [copyFeedback, setCopyFeedback] = useState(false);
-
   const [isColumnsFeeding, setIsColumnsFeeding] = useState(true);
+
+  // Sincroniza a escala a cada minuto para garantir precisão em trocas de turno
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setDetectedScale(getCurrentShiftInfo());
+    }, 60000);
+    return () => clearInterval(timer);
+  }, []);
 
   useEffect(() => {
     const template = CHECKLIST_TEMPLATES[currentArea];
@@ -54,7 +63,7 @@ const ChecklistArea: React.FC<ChecklistAreaProps> = ({ onSaveReport }) => {
         label,
         status: 'ok',
         discipline: 'OPERAÇÃO',
-        observation: '' // REMOVIDO "OK" AUTOMÁTICO - AGORA INICIA VAZIO
+        observation: ''
       })));
     }
   }, [currentArea]);
@@ -65,7 +74,6 @@ const ChecklistArea: React.FC<ChecklistAreaProps> = ({ onSaveReport }) => {
       setIsColumnsFeeding(status === 'ok');
     }
     
-    // Atribuição automática de disciplina
     let autoDiscipline: Discipline = 'OPERAÇÃO';
     const labelLower = item?.label.toLowerCase() || '';
     if (labelLower.includes('sprays') || labelLower.includes('pano') || labelLower.includes('underpan') || labelLower.includes('resguardos')) {
@@ -99,7 +107,6 @@ const ChecklistArea: React.FC<ChecklistAreaProps> = ({ onSaveReport }) => {
       const isHeader = item.label.startsWith('SECTION:');
       const labelLower = item.label.toLowerCase();
       
-      // ISENÇÃO DE JUSTIFICATIVA: Itens de Sistemas Auxiliares (Retorno, Válvulas, Corse) não precisam de texto manual
       if (labelLower.includes('retorno do tanque 104') || 
           labelLower.includes('corse seeding') || 
           labelLower.includes('valvula de diluicao')) {
@@ -122,7 +129,6 @@ const ChecklistArea: React.FC<ChecklistAreaProps> = ({ onSaveReport }) => {
 
       if (!isHeader && !isMeasurement && !isTextInput && (item.status === 'fail' || item.status === 'warning')) {
         const obs = item.observation?.trim() || '';
-        // Se a observação estiver vazia e for falha/aviso, exige preenchimento (exceto itens simplificados)
         return obs === '';
       }
       return false;
@@ -137,13 +143,16 @@ const ChecklistArea: React.FC<ChecklistAreaProps> = ({ onSaveReport }) => {
     setIsSubmitting(true);
     const filteredItems = items.filter(item => !item.label.startsWith('SECTION:'));
     
+    // Usa a escala detectada automaticamente no momento do envio
+    const currentScale = getCurrentShiftInfo();
+
     const report: Report = {
       id: `rep-${Date.now()}`,
       timestamp: Date.now(),
       area: currentArea,
       operator,
-      turma,
-      turno,
+      turma: currentScale.turma,
+      turno: currentScale.turno,
       items: filteredItems,
       pendingItems: [],
       generalObservations: observations
@@ -260,6 +269,13 @@ const ChecklistArea: React.FC<ChecklistAreaProps> = ({ onSaveReport }) => {
 
   let skipDueToNoFeed = false;
 
+  const getShiftColor = (turno: Turno) => {
+    if (turno === 'MANHÃ') return 'bg-blue-600';
+    if (turno === 'TARDE') return 'bg-orange-500';
+    if (turno === 'NOITE') return 'bg-indigo-700';
+    return 'bg-slate-900';
+  };
+
   return (
     <div className="max-w-4xl mx-auto space-y-8 animate-in fade-in duration-500 pb-20">
       {showSuccessModal && (
@@ -268,7 +284,7 @@ const ChecklistArea: React.FC<ChecklistAreaProps> = ({ onSaveReport }) => {
             <div className="w-24 h-24 bg-emerald-50 text-emerald-500 rounded-full flex items-center justify-center mx-auto mb-4 border-4 border-emerald-100 animate-bounce"><CheckCircleIcon size={56} /></div>
             <div className="space-y-2">
               <h2 className="text-3xl font-black text-slate-900 uppercase tracking-tighter">Relatório Concluído!</h2>
-              <p className="text-slate-500 text-[10px] font-bold uppercase tracking-widest">Base de dados v9.2 Stable atualizada.</p>
+              <p className="text-slate-500 text-[10px] font-bold uppercase tracking-widest">Plataforma Ultrafino v1.2</p>
             </div>
             <div className="flex flex-col gap-3">
               <button onClick={handleShareWhatsApp} className="w-full bg-[#25D366] hover:bg-[#128C7E] text-white py-5 rounded-[1.5rem] font-black uppercase tracking-widest flex items-center justify-center gap-3 transition-all shadow-xl shadow-emerald-500/20 active:scale-95"><SendIcon size={20} /> Compartilhar Agora</button>
@@ -283,7 +299,7 @@ const ChecklistArea: React.FC<ChecklistAreaProps> = ({ onSaveReport }) => {
         <button onClick={() => navigate(-1)} className="flex items-center gap-2 text-slate-500 hover:text-slate-800 font-black uppercase text-[10px] tracking-widest transition-colors"><ArrowLeftIcon size={16} /> Voltar</button>
         <div className="text-right">
           <h1 className="text-3xl font-black text-slate-900 tracking-tighter uppercase">{currentArea}</h1>
-          <p className="text-slate-400 text-[9px] font-bold uppercase tracking-[0.2em] mt-1">Checklist Operação v9.2 Stable</p>
+          <p className="text-slate-400 text-[9px] font-bold uppercase tracking-[0.2em] mt-1">Plataforma Ultrafino v1.2</p>
         </div>
       </div>
 
@@ -295,26 +311,36 @@ const ChecklistArea: React.FC<ChecklistAreaProps> = ({ onSaveReport }) => {
       )}
 
       <form onSubmit={handleSubmit} className="space-y-8 pb-12">
-        <div className="bg-white p-8 rounded-[2.5rem] border-2 border-slate-100 shadow-sm grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+        <div className="bg-white p-8 rounded-[2.5rem] border-2 border-slate-100 shadow-sm grid grid-cols-1 md:grid-cols-2 gap-8">
           <div className="space-y-3">
             <label className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] flex items-center gap-2"><UserCogIcon size={14} className="text-blue-500" /> Identificação</label>
             <input type="text" required placeholder="DIGITE SEU NOME..." value={operator} onChange={(e) => setOperator(e.target.value.toUpperCase())} className="w-full px-6 py-4 bg-slate-50 border-2 border-slate-100 rounded-2xl outline-none font-black uppercase text-sm focus:border-blue-500 focus:bg-white transition-all shadow-inner" />
           </div>
+          
+          {/* PAINEL DE ESCALA AUTOMÁTICA */}
           <div className="space-y-3">
-            <label className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] flex items-center gap-2"><TargetIcon size={14} className="text-blue-500" /> Turma</label>
-            <div className="flex gap-2">
-              {(['A', 'B', 'C', 'D'] as Turma[]).map(t => (
-                <button key={t} type="button" onClick={() => setTurma(t)} className={`flex-1 py-4 rounded-2xl font-black text-xs transition-all border-2 active:scale-95 ${turma === t ? 'bg-blue-600 border-blue-600 text-white shadow-lg shadow-blue-500/20' : 'bg-white border-slate-100 text-slate-400 hover:border-slate-200'}`}>{t}</button>
-              ))}
-            </div>
-          </div>
-          <div className="space-y-3">
-            <label className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] flex items-center gap-2"><ClockIcon size={14} className="text-blue-500" /> Turno</label>
-            <div className="flex gap-1">
-              {(['MANHÃ', 'TARDE', 'NOITE'] as Turno[]).map(t => (
-                <button key={t} type="button" onClick={() => setTurno(t)} className={`flex-1 py-4 rounded-2xl font-black text-[9px] transition-all border-2 active:scale-95 ${turno === t ? 'bg-blue-600 border-blue-600 text-white shadow-lg shadow-blue-500/10' : 'bg-white border-slate-100 text-slate-400 hover:border-slate-200'}`}>{t}</button>
-              ))}
-            </div>
+             <label className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] flex items-center gap-2">
+               <Lock size={12} className="text-slate-400" /> Escala Vigente (Auto)
+             </label>
+             <div className="flex gap-4">
+                <div className={`flex-1 ${getShiftColor(detectedScale.turno)} p-4 rounded-2xl border border-white/10 shadow-lg flex flex-col justify-center`}>
+                   <div className="flex items-center justify-between mb-1">
+                      <span className="text-[8px] font-black text-white/60 uppercase tracking-widest">Turno</span>
+                      <ClockIcon size={12} className="text-white/40" />
+                   </div>
+                   <span className="text-white font-black uppercase text-sm">{detectedScale.turno}</span>
+                </div>
+                <div className="flex-1 bg-slate-900 p-4 rounded-2xl border border-slate-800 shadow-lg flex flex-col justify-center">
+                   <div className="flex items-center justify-between mb-1">
+                      <span className="text-[8px] font-black text-slate-500 uppercase tracking-widest">Equipe</span>
+                      <Zap size={12} className="text-amber-500" />
+                   </div>
+                   <span className="text-white font-black uppercase text-sm">Turma {detectedScale.turma}</span>
+                </div>
+             </div>
+             <p className="text-[8px] font-bold text-slate-400 uppercase tracking-widest text-center mt-2 flex items-center justify-center gap-1">
+               <Zap size={8} className="text-amber-500" /> Sincronizado com Escala Vulcan 2026
+             </p>
           </div>
         </div>
 
@@ -337,7 +363,6 @@ const ChecklistArea: React.FC<ChecklistAreaProps> = ({ onSaveReport }) => {
             const isFailOrWarning = item.status === 'fail' || item.status === 'warning';
             const isNoFeedButNeedsObs = item.label === 'ALIMENTANDO COLUNAS?' && item.status === 'fail';
             
-            // ISENÇÃO DE CAMPOS: Itens de Sistemas Auxiliares e controle de alimentação de colunas
             const isAuxiliaryItem = labelLower.includes('retorno do tanque 104') || 
                                     labelLower.includes('corse seeding') || 
                                     labelLower.includes('valvula de diluicao');
@@ -399,7 +424,7 @@ const ChecklistArea: React.FC<ChecklistAreaProps> = ({ onSaveReport }) => {
 
         <button type="submit" disabled={isSubmitting} className="w-full py-6 rounded-[2rem] bg-slate-900 text-white font-black uppercase tracking-[0.3em] flex items-center justify-center gap-4 shadow-2xl hover:bg-slate-800 transition-all active:scale-95 disabled:opacity-50 text-sm">
           {isSubmitting ? <RotateCcwIcon size={20} className="animate-spin" /> : <SendIcon size={20} />}
-          {isSubmitting ? 'PROCESSANDO...' : 'TRANSMITIR RELATÓRIO v9.2'}
+          {isSubmitting ? 'PROCESSANDO...' : 'TRANSMITIR RELATÓRIO v1.2'}
         </button>
       </form>
     </div>

@@ -104,22 +104,26 @@ export const formatReportForWhatsApp = (report: Report, itemsWithMaybeSections?:
       if (isMeasurement || isTextInput) {
         let suffix = "";
         
+        // Lógica de Diferença de 3% para Nível vs Setpoint (Regra v1.4)
         if (labelLower.includes('nível (%)')) {
           const nextItem = itemsToFormat[index + 1];
-          if (nextItem && nextItem.label.toLowerCase().includes('setpoint (%)')) {
+          const nextLabelLower = nextItem?.label.toLowerCase() || "";
+          if (nextItem && (nextLabelLower.includes('setpoint (%)') || nextLabelLower.includes('actual (%)'))) {
             const valNivel = parseFloat(item.observation || "0");
             const valSetpoint = parseFloat(nextItem.observation || "0");
             if (item.observation && nextItem.observation) {
-               suffix = valNivel === valSetpoint ? " 🟢" : " 🔴";
+               const diff = Math.abs(valNivel - valSetpoint);
+               suffix = diff < 3 ? " 🟢" : " 🔴";
             }
           }
-        } else if (labelLower.includes('setpoint (%)')) {
+        } else if (labelLower.includes('setpoint (%)') || labelLower.includes('actual (%)')) {
            const prevItem = itemsToFormat[index - 1];
            if (prevItem && prevItem.label.toLowerCase().includes('nível (%)')) {
-              const valNivel = parseFloat(prevItem.observation || "0");
               const valSetpoint = parseFloat(item.observation || "0");
+              const valNivel = parseFloat(prevItem.observation || "0");
               if (item.observation && prevItem.observation) {
-                suffix = valNivel === valSetpoint ? " 🟢" : " 🔴";
+                const diff = Math.abs(valNivel - valSetpoint);
+                suffix = diff < 3 ? " 🟢" : " 🔴";
               }
            }
         }

@@ -48,7 +48,6 @@ const ReportsHistory: React.FC<ReportsHistoryProps> = ({ reports, onAddItemComme
 
   const handleExportAll = () => {
     const dataToExport = reports.map(r => ({
-      ID: r.id,
       Data: new Date(r.timestamp).toLocaleDateString('pt-BR'),
       Hora: new Date(r.timestamp).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
       Area: r.area,
@@ -76,6 +75,21 @@ const ReportsHistory: React.FC<ReportsHistoryProps> = ({ reports, onAddItemComme
         setCopyFeedback(true);
         setTimeout(() => setCopyFeedback(false), 2000);
       }
+    }
+  };
+
+  const handleExportSingleExcel = () => {
+    if (selectedReport) {
+      const singleData = [{
+        Data: new Date(selectedReport.timestamp).toLocaleDateString('pt-BR'),
+        Hora: new Date(selectedReport.timestamp).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
+        Area: selectedReport.area,
+        Operador: selectedReport.operator,
+        Turma: selectedReport.turma,
+        Turno: selectedReport.turno,
+        Observacoes: selectedReport.generalObservations
+      }];
+      exportToExcel(singleData, `REL_${selectedReport.area}`);
     }
   };
 
@@ -235,7 +249,7 @@ const ReportsHistory: React.FC<ReportsHistoryProps> = ({ reports, onAddItemComme
                     {copyFeedback ? 'Copiado!' : 'Copiar Texto'}
                   </button>
                   <button 
-                    onClick={() => exportToExcel([selectedReport], `REL_${selectedReport.area}`)}
+                    onClick={handleExportSingleExcel}
                     className="w-full bg-slate-100 text-slate-600 py-3 rounded-xl font-black uppercase text-[10px] tracking-widest border border-slate-200"
                   >
                     <Download size={16} />

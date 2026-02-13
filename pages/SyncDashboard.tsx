@@ -122,8 +122,9 @@ function doPost(e) {
   
   // 2. SINCRONISMO DE PENDÊNCIAS (ID_REF)
   if (sheetPending.getLastRow() == 0) {
-    sheetPending.appendRow(["TAG", "ÁREA", "DISCIPLINA", "DESCRIÇÃO", "PRIORIDADE", "STATUS", "OP ORIGEM", "TURMA ORIGEM", "OP BAIXA", "TURMA BAIXA", "DATA", "ID_REF"]);
-    sheetPending.getRange(1, 1, 1, 12).setBackground("#1e293b").setFontColor("#FFF").setFontWeight("bold");
+    // Fix: Added TURNO ORIGEM to header
+    sheetPending.appendRow(["TAG", "ÁREA", "DISCIPLINA", "DESCRIÇÃO", "PRIORIDADE", "STATUS", "OP ORIGEM", "TURMA ORIGEM", "TURNO ORIGEM", "OP BAIXA", "TURMA BAIXA", "DATA", "ID_REF"]);
+    sheetPending.getRange(1, 1, 1, 13).setBackground("#1e293b").setFontColor("#FFF").setFontWeight("bold");
   }
   
   if (data.pending) {
@@ -131,15 +132,18 @@ function doPost(e) {
     data.pending.forEach(function(p) { 
       var targetRow = -1;
       for (var i = 1; i < pValues.length; i++) {
-        if (pValues[i][11] == p.id) { targetRow = i + 1; break; }
+        // Fix: ID_REF moved to column 13 (index 12)
+        if (pValues[i][12] == p.id) { targetRow = i + 1; break; }
       }
       
       if (targetRow > -1) {
         sheetPending.getRange(targetRow, 6).setValue(p.status.toUpperCase());
-        sheetPending.getRange(targetRow, 9).setValue(p.operador_resolucao);
-        sheetPending.getRange(targetRow, 10).setValue(p.turma_resolucao);
+        // Fix: Adjusted indices for OP BAIXA and TURMA BAIXA
+        sheetPending.getRange(targetRow, 10).setValue(p.operador_resolucao);
+        sheetPending.getRange(targetRow, 11).setValue(p.turma_resolucao);
       } else {
-        sheetPending.appendRow([p.tag, p.area, p.disciplina, p.descricao, p.prioridade, p.status, p.operador_origem, p.turma_origem, p.operador_resolucao, p.turma_resolucao, p.data, p.id]);
+        // Fix: Include turno_origem in appendRow
+        sheetPending.appendRow([p.tag, p.area, p.disciplina, p.descricao, p.prioridade, p.status, p.operador_origem, p.turma_origem, p.turno_origem, p.operador_resolucao, p.turma_resolucao, p.data, p.id]);
       }
     });
   }
@@ -176,7 +180,8 @@ function updateBIAccumulated(sheetBI, sheetPending, monthRef) {
   sheetBI.getRange(perfStartRow + 1, 1, 1, 2).setValues([["TURMA", "TOTAL BAIXAS"]]).setBackground("#f8fafc").setFontWeight("bold");
   var tMap = {"A": 0, "B": 0, "C": 0, "D": 0};
   for(var i = 1; i < pendData.length; i++) {
-    var turmaBaixa = pendData[i][9];
+    // Fix: Adjusted index for turmaBaixa (Col 11, index 10)
+    var turmaBaixa = pendData[i][10];
     var status = pendData[i][5];
     if(status == "RESOLVIDO" && tMap[turmaBaixa] !== undefined) tMap[turmaBaixa]++;
   }
@@ -195,7 +200,8 @@ function updateBIAccumulated(sheetBI, sheetPending, monthRef) {
   for(var i = 1; i < pendData.length; i++) {
     var status = pendData[i][5];
     var turmaOrigem = pendData[i][7];
-    var turmaBaixa = pendData[i][9];
+    // Fix: Adjusted index for turmaBaixa (Col 11, index 10)
+    var turmaBaixa = pendData[i][10];
 
     if(status == "ABERTO" || (status == "RESOLVIDO" && turmaOrigem != turmaBaixa)) {
       if(oMap[turmaOrigem] !== undefined) oMap[turmaOrigem]++;
@@ -224,11 +230,13 @@ function doGet(e) {
       if (s.getName().indexOf("PEND_") === 0) {
         var rows = s.getDataRange().getValues();
         for (var i = 1; i < rows.length; i++) {
-          if (rows[i][11]) list.push({ 
+          // Fix: Include turno_origem and adjust all subsequent indices
+          if (rows[i][12]) list.push({ 
             tag: rows[i][0], area: rows[i][1], disciplina: rows[i][2], 
             descricao: rows[i][3], prioridade: rows[i][4], status: rows[i][5],
             operador_origem: rows[i][6], turma_origem: rows[i][7],
-            operador_resolucao: rows[i][8], turma_resolucao: rows[i][9], data: rows[i][10], id: rows[i][11]
+            turno_origem: rows[i][8],
+            operador_resolucao: rows[i][9], turma_resolucao: rows[i][10], data: rows[i][11], id: rows[i][12]
           });
         }
       }

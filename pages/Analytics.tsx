@@ -18,7 +18,8 @@ import {
   Target,
   History,
   ShieldAlert,
-  BarChart
+  BarChart,
+  ChevronRight
 } from 'lucide-react';
 import { Report, PendingItem, Area, Turma, Discipline } from '../types';
 import { CloudStats } from '../services/googleSync';
@@ -42,18 +43,15 @@ const Analytics: React.FC<AnalyticsProps> = ({
 }) => {
   const navigate = useNavigate();
 
-  // Estatísticas de Carga Acumulada (Volume Total do Mês - Não dá baixa para contagem)
+  // Estatísticas de Carga Acumulada
   const disciplinePerformance = useMemo(() => {
     const disciplines: Discipline[] = ['MECÂNICA', 'ELÉTRICA', 'INSTRUMENTAÇÃO', 'OPERAÇÃO'];
     
     return disciplines.map(d => {
-      // Filtrar todas as pendências da disciplina no mês (independente do status)
       const totalInMonth = pendingItems.filter(p => p.discipline === d);
       const openCount = totalInMonth.filter(p => p.status === 'aberto').length;
       const resolvedCount = totalInMonth.filter(p => p.status === 'resolvido').length;
-      
       const totalVolume = totalInMonth.length;
-      // Eficiência ainda é calculada, mas o foco visual será o volume total
       const efficiency = totalVolume > 0 ? (resolvedCount / totalVolume) * 100 : 0;
       
       let icon = <Wrench size={18} />;
@@ -65,7 +63,7 @@ const Analytics: React.FC<AnalyticsProps> = ({
 
       return { 
         discipline: d, 
-        volume: totalVolume, // Volume acumulado para o final do mês
+        volume: totalVolume, 
         open: openCount, 
         resolved: resolvedCount, 
         efficiency: Math.round(efficiency),
@@ -138,7 +136,11 @@ const Analytics: React.FC<AnalyticsProps> = ({
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-10">
             {disciplinePerformance.map(stat => (
-              <div key={stat.discipline} className="space-y-4 group">
+              <button 
+                key={stat.discipline}
+                onClick={() => navigate(`/pending?status=Tudo&discipline=${encodeURIComponent(stat.discipline)}`)}
+                className="space-y-4 group text-left w-full hover:bg-white/5 p-4 rounded-3xl transition-all border border-transparent hover:border-white/10"
+              >
                 <div className="flex justify-between items-end">
                   <div className="flex items-center gap-3">
                     <div className={`p-3 rounded-2xl bg-white/5 text-${stat.color}-400 border border-white/10 group-hover:scale-110 transition-transform`}>
@@ -155,20 +157,16 @@ const Analytics: React.FC<AnalyticsProps> = ({
                   </div>
                 </div>
                 <div className="space-y-2">
-                  {/* Barra de volume total (não dá baixa) */}
                   <div className="h-4 bg-white/5 rounded-full overflow-hidden border border-white/5 p-[2px]">
                     <div 
                       className={`h-full bg-${stat.color}-500 rounded-full transition-all duration-1000 flex items-center justify-end px-2`} 
-                      style={{ width: `100%` }} // Sempre preenchido pois é o volume total que aconteceu
+                      style={{ width: `100%` }}
                     >
                        <span className="text-[8px] font-black text-white/40 uppercase">Mês Atual</span>
                     </div>
                   </div>
-                  <div className="flex justify-between text-[8px] font-black uppercase">
-                    <span className="text-slate-400 italic">O volume acumulado reflete o esforço total da disciplina.</span>
-                  </div>
                 </div>
-              </div>
+              </button>
             ))}
           </div>
           
@@ -178,7 +176,7 @@ const Analytics: React.FC<AnalyticsProps> = ({
                <span className="text-white text-[10px] font-black uppercase tracking-widest">Regra de Fechamento v1.4</span>
              </div>
              <p className="text-slate-400 text-[10px] leading-relaxed uppercase font-bold">
-               A contagem de carga por disciplina é acumulativa. Mesmo após a baixa, o registro permanece no volume total para análise de recorrência no fechamento mensal.
+               A contagem de carga por disciplina é acumulativa. Clique nos cards acima para auditar os registros.
              </p>
           </div>
         </div>
@@ -189,27 +187,33 @@ const Analytics: React.FC<AnalyticsProps> = ({
               <h2 className="text-slate-900 text-sm font-black uppercase tracking-widest flex items-center gap-2">
                 <Trophy size={18} className="text-amber-500" /> Ranking Resolutivo
               </h2>
-              <p className="text-slate-400 text-[9px] font-bold uppercase">Eficiência das Equipes</p>
+              <p className="text-slate-400 text-[9px] font-bold uppercase italic">Quem mais entregou no mês</p>
             </div>
 
             <div className="space-y-3">
               {turmaPerformance.sort((a,b) => b.resolved - a.resolved).map((t, idx) => (
-                <div key={t.turma} className={`flex items-center justify-between p-3 rounded-2xl border transition-all ${
-                  idx === 0 ? 'bg-amber-50 border-amber-200 shadow-md' : 'bg-slate-50 border-slate-100'
+                <button 
+                  key={t.turma} 
+                  onClick={() => navigate(`/pending?status=resolvido&resolvedByTurma=${t.turma}`)}
+                  className={`w-full flex items-center justify-between p-4 rounded-2xl border transition-all active:scale-[0.98] group ${
+                  idx === 0 ? 'bg-amber-50 border-amber-200 shadow-md hover:bg-amber-100' : 'bg-slate-50 border-slate-100 hover:bg-slate-100'
                 }`}>
                   <div className="flex items-center gap-3">
-                    <div className={`w-8 h-8 rounded-xl flex items-center justify-center font-black text-white shadow-md text-xs ${
-                      idx === 0 ? 'bg-amber-500' : 'bg-slate-400'
+                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center font-black text-white shadow-md text-sm ${
+                      idx === 0 ? 'bg-amber-500' : 'bg-slate-900'
                     }`}>
                       {t.turma}
                     </div>
-                    <p className="text-[10px] font-black text-slate-800">TURMA {t.turma}</p>
+                    <div className="text-left">
+                      <p className="text-[11px] font-black text-slate-800 uppercase tracking-tight">TURMA {t.turma}</p>
+                      <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest group-hover:text-blue-600 transition-colors flex items-center gap-1">Auditar Baixas <ChevronRight size={10} /></span>
+                    </div>
                   </div>
                   <div className="text-right flex items-center gap-2">
-                    <span className="text-lg font-black text-slate-900">{t.resolved}</span>
-                    <CheckCircle2 size={12} className="text-emerald-500" />
+                    <span className="text-2xl font-black text-slate-900">{t.resolved}</span>
+                    <CheckCircle2 size={16} className="text-emerald-500" />
                   </div>
-                </div>
+                </button>
               ))}
             </div>
 
@@ -218,23 +222,30 @@ const Analytics: React.FC<AnalyticsProps> = ({
                 <h2 className="text-red-600 text-[10px] font-black uppercase tracking-widest flex items-center gap-2">
                   <ShieldAlert size={14} /> Dívida Técnica (D.T)
                 </h2>
-                <p className="text-slate-400 text-[8px] font-bold uppercase italic">Carga Pendente de Responsabilidade da Origem.</p>
+                <p className="text-slate-400 text-[8px] font-bold uppercase italic">Pendentes geradas pela equipe</p>
               </div>
 
               <div className="space-y-2">
                 {debtPerformance.map((t, idx) => (
-                  <div key={t.turma} className="flex items-center justify-between p-2 bg-red-50/50 rounded-xl border border-red-100">
+                  <button 
+                    key={t.turma} 
+                    onClick={() => navigate(`/pending?status=aberto&turma=${t.turma}`)}
+                    className="w-full flex items-center justify-between p-3 bg-red-50/50 rounded-xl border border-red-100 hover:bg-red-50 transition-colors active:scale-95 group"
+                  >
                     <div className="flex items-center gap-2">
-                      <span className={`w-6 h-6 rounded-lg flex items-center justify-center font-black text-[10px] ${idx === 0 ? 'bg-red-600 text-white' : 'bg-red-200 text-red-700'}`}>
+                      <span className={`w-7 h-7 rounded-lg flex items-center justify-center font-black text-[10px] ${idx === 0 ? 'bg-red-600 text-white' : 'bg-red-200 text-red-700'}`}>
                         {t.turma}
                       </span>
-                      <span className="text-[10px] font-black text-slate-700 uppercase">Equipe {t.turma}</span>
+                      <div className="text-left">
+                        <span className="text-[10px] font-black text-slate-700 uppercase">Equipe {t.turma}</span>
+                        <span className="text-[7px] font-black text-red-400 uppercase tracking-widest block group-hover:text-red-600 transition-colors">Ver Pendentes</span>
+                      </div>
                     </div>
                     <div className="flex items-center gap-2">
-                      <span className="text-sm font-black text-red-600">{t.openDebt}</span>
-                      <History size={12} className="text-red-400" />
+                      <span className="text-base font-black text-red-600">{t.openDebt}</span>
+                      <History size={14} className="text-red-400" />
                     </div>
-                  </div>
+                  </button>
                 ))}
               </div>
             </div>

@@ -3,7 +3,21 @@ import * as XLSX from 'xlsx';
 import { Report, PendingItem } from '../types';
 
 /**
- * Exports data to an Excel file with print optimizations.
+ * Utilitário para gerar arquivo e disparar download
+ */
+const saveWorkbook = (workbook: XLSX.WorkBook, fileName: string) => {
+  const excelBuffer = XLSX.write(workbook, { bookType: 'xlsx', type: 'array' });
+  const blob = new Blob([excelBuffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;charset=UTF-8' });
+  const url = window.URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = `${fileName}.xlsx`;
+  link.click();
+  window.URL.revokeObjectURL(url);
+};
+
+/**
+ * EXPORTAÇÃO GERAL (AUDITORIA)
  */
 export const exportToExcel = (data: any[], fileName: string) => {
   const worksheet = XLSX.utils.json_to_sheet(data);
@@ -16,78 +30,102 @@ export const exportToExcel = (data: any[], fileName: string) => {
       objectMaxLength[i] = Math.max(objectMaxLength[i] || 10, columnValue.length + 2);
     });
   });
-  
   worksheet["!cols"] = objectMaxLength.map((w) => ({ wch: Math.min(w, 50) }));
 
-  worksheet['!pageSetup'] = {
-    orientation: 'landscape',
-    paperSize: 9,
-    scale: 100
-  };
-
-  worksheet['!margins'] = {
-    left: 0.5, right: 0.5, top: 0.5, bottom: 0.5, header: 0.3, footer: 0.3
-  };
-
-  XLSX.utils.book_append_sheet(workbook, worksheet, "Dados");
-  
-  const excelBuffer = XLSX.write(workbook, { bookType: 'xlsx', type: 'array' });
-  const blob = new Blob([excelBuffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;charset=UTF-8' });
-  const url = window.URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  link.href = url;
+  XLSX.utils.book_append_sheet(workbook, worksheet, "BASE_DADOS_AUDITORIA");
   
   const now = new Date();
-  const monthTag = `${(now.getMonth() + 1).toString().padStart(2, '0')}_${now.getFullYear()}`;
-  link.download = `${fileName}_${monthTag}.xlsx`;
-  
-  link.click();
-  window.URL.revokeObjectURL(url);
+  const timeTag = `${now.getHours()}h${now.getMinutes()}`;
+  saveWorkbook(workbook, `${fileName}_${timeTag}`);
 };
 
 /**
- * Exportação Consolidada Admin (Relatórios + Pendências) em abas separadas.
+ * RELATÓRIO DE TURNO (LAYOUT PARA APRESENTAÇÃO/DDS)
  */
+export const exportShiftReport = (
+  items: any[], 
+  meta: { teamLeader: string, turma: string, turno: string },
+  fileName: string
+) => {
+  const dateStr = new Date().toLocaleDateString('pt-BR');
+  const timeStr = new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+
+  const headerData = [
+    ["VULCAN - RELATÓRIO EXECUTIVO DE TURNO"],
+    ["ESTADO ATUAL DOS ATIVOS E PRODUTIVIDADE DA EQUIPE"],
+    [""],
+    ["TEAM LEADER:", meta.teamLeader.toUpperCase(), "", "DATA:", dateStr],
+    ["TURMA / EQUIPE:", meta.turma, "", "HORA EMISSÃO:", timeStr],
+    ["TURNO OPERACIONAL:", meta.turno, "", "STATUS GERAL:", "GERADO"],
+    [""],
+    ["ÁREA", "TAG/ATIVO", "DISCIPLINA", "DESCRIÇÃO TÉCNICA", "SITUAÇÃO", "DATA REPORTE", "DATA CONCLUSÃO"]
+  ];
+
+  const rows = items.map(item => [
+    item.ÁREA,
+    item.TAG,
+    item.DISCIPLINA,
+    item.DESCRIÇÃO,
+    item.SITUAÇÃO,
+    item['DATA REPORTE'],
+    item['DATA CONCLUSÃO']
+  ]);
+
+  const finalData = [...headerData, ...rows];
+  const worksheet = XLSX.utils.aoa_to_sheet(finalData);
+  const workbook = XLSX.utils.book_new();
+
+  worksheet["!cols"] = [
+    { wch: 20 }, 
+    { wch: 15 }, 
+    { wch: 15 }, 
+    { wch: 60 }, 
+    { wch: 30 }, 
+    { wch: 15 }, 
+    { wch: 15 }  
+  ];
+
+  worksheet['!merges'] = [
+    { s: { r: 0, c: 0 }, e: { r: 0, c: 6 } }, 
+    { s: { r: 1, c: 0 }, e: { r: 1, c: 6 } }
+  ];
+
+  XLSX.utils.book_append_sheet(workbook, worksheet, "DASHBOARD_TURNO");
+  saveWorkbook(workbook, fileName);
+};
+
 export const exportMasterToExcel = (reports: Report[], pending: PendingItem[], fileName: string) => {
   const workbook = XLSX.utils.book_new();
-  const now = new Date();
-  const monthTag = `${(now.getMonth() + 1).toString().padStart(2, '0')}_${now.getFullYear()}`;
+  const monthTag = `${(new Date().getMonth() + 1).toString().padStart(2, '0')}_${new Date().getFullYear()}`;
 
-  // 1. Preparar Aba de Relatórios
-  const reportsData = reports.map(r => ({
-    'Data': new Date(r.timestamp).toLocaleDateString('pt-BR'),
-    'Hora': new Date(r.timestamp).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
-    'Área': r.area,
-    'Operador': r.operator.toUpperCase(),
-    'Turma': r.turma,
-    'Turno': r.turno,
-    'Itens com Falha': r.items.filter(i => i.status === 'fail' || i.status === 'warning').map(i => i.label).join(', '),
-    'Observações': r.generalObservations.toUpperCase()
-  }));
-  const wsReports = XLSX.utils.json_to_sheet(reportsData);
-  XLSX.utils.book_append_sheet(workbook, wsReports, `REL_${monthTag}`);
+  const summaryData = [
+    ["SUMÁRIO EXECUTIVO DE PERFORMANCE - " + monthTag],
+    [""],
+    ["DISCIPLINA", "VOLUME TOTAL", "RESOLVIDOS", "EFICIÊNCIA"],
+    ...Array.from(new Set(pending.map(p => p.discipline))).map(d => {
+      const total = pending.filter(p => p.discipline === d).length;
+      const res = pending.filter(p => p.discipline === d && p.status === 'resolvido').length;
+      return [d, total, res, total > 0 ? `${Math.round((res/total)*100)}%` : "0%"];
+    })
+  ];
+  const wsSummary = XLSX.utils.aoa_to_sheet(summaryData);
+  XLSX.utils.book_append_sheet(workbook, wsSummary, "RESUMO_MENSAL");
 
-  // 2. Preparar Aba de Pendências
   const pendingData = pending.map(p => ({
-    'Tag': p.tag.toUpperCase(),
-    'Área': p.area,
-    'Descrição': p.description.toUpperCase(),
-    'Prioridade': p.priority.toUpperCase(),
-    'Status': p.status.toUpperCase(),
-    'Operador Origem': p.operator?.toUpperCase() || 'N/A',
-    'Resolvido Por': p.resolvedBy?.toUpperCase() || (p.status === 'resolvido' ? 'N/A' : '-'),
-    'Data Reporte': new Date(p.timestamp).toLocaleString('pt-BR')
+    'STATUS': p.status === 'resolvido' ? "🟢 RESOLVIDO" : "🔴 PENDENTE",
+    'ÁREA': p.area,
+    'TAG': p.tag.toUpperCase(),
+    'DISCIPLINA': p.discipline,
+    'DESCRIÇÃO': p.description.toUpperCase(),
+    'PRIORIDADE': p.priority.toUpperCase(),
+    'EQUIPE ORIGEM': `TURMA ${p.turma}`,
+    'OPERADOR': p.operator,
+    'DATA REPORTE': new Date(p.timestamp).toLocaleString('pt-BR'),
+    'RESOLVIDO POR': p.resolvedBy ? `${p.resolvedBy} (TURMA ${p.resolvedByTurma})` : "-",
+    'DATA CONCLUSÃO': p.resolvedAt ? new Date(p.resolvedAt).toLocaleString('pt-BR') : "-"
   }));
   const wsPending = XLSX.utils.json_to_sheet(pendingData);
-  XLSX.utils.book_append_sheet(workbook, wsPending, `PEND_${monthTag}`);
+  XLSX.utils.book_append_sheet(workbook, wsPending, "DETALHE_TECNICO");
 
-  // Gerar arquivo
-  const excelBuffer = XLSX.write(workbook, { bookType: 'xlsx', type: 'array' });
-  const blob = new Blob([excelBuffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;charset=UTF-8' });
-  const url = window.URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = `${fileName}_${monthTag}.xlsx`;
-  link.click();
-  window.URL.revokeObjectURL(url);
+  saveWorkbook(workbook, `${fileName}_${monthTag}`);
 };

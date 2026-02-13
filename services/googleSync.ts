@@ -77,6 +77,8 @@ export const syncToGoogleSheets = async (
         status: sanitize(p.status),
         operador_origem: sanitize(p.operator),
         turma_origem: p.turma,
+        // Fix: Added turno_origem to pending payload
+        turno_origem: sanitize(p.turno),
         operador_resolucao: sanitize(p.resolvedBy || '-'),
         turma_resolucao: sanitize(p.resolvedByTurma || '-'),
         data: p.timestamp ? new Date(p.timestamp).toLocaleString('pt-BR') : '-'
@@ -107,7 +109,7 @@ export const fetchCloudItems = async (scriptUrl: string): Promise<PendingItem[]>
     const data = await response.json();
     if (!Array.isArray(data)) return [];
     
-    return data.map((item: any) => {
+    return data.map((item: any): PendingItem => {
       const isResolved = (item.status || '').toUpperCase() === 'RESOLVIDO' || (item.status || '').toUpperCase() === 'OK';
       return {
         id: item.id || `cloud-${item.tag}-${Date.now()}`,
@@ -119,6 +121,8 @@ export const fetchCloudItems = async (scriptUrl: string): Promise<PendingItem[]>
         status: isResolved ? 'resolvido' : 'aberto',
         operator: item.operador_origem || 'SISTEMA',
         turma: item.turma_origem || 'A',
+        // Fix: Added missing turno property from item.turno_origem
+        turno: (item.turno_origem || 'MANHÃ') as any,
         resolvedBy: item.operador_resolucao !== '-' ? item.operador_resolucao : undefined,
         resolvedByTurma: item.turma_resolucao !== '-' ? (item.turma_resolucao as any) : undefined,
         timestamp: Date.now(),

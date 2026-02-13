@@ -11,7 +11,8 @@ import {
   CloudOff,
   RefreshCw,
   PieChart,
-  Settings
+  Settings,
+  Calendar
 } from 'lucide-react';
 import Dashboard from './pages/Dashboard';
 import ChecklistArea from './pages/ChecklistArea';
@@ -19,6 +20,7 @@ import PendingList from './pages/PendingList';
 import ReportsHistory from './pages/ReportsHistory';
 import SyncDashboard from './pages/SyncDashboard';
 import Analytics from './pages/Analytics';
+import ShiftCalendar from './pages/ShiftCalendar';
 import { Area, Report, PendingItem, Turma } from './types';
 import { syncToGoogleSheets, fetchCloudItems, fetchCloudData, CloudStats, DEFAULT_SCRIPT_URL } from './services/googleSync';
 
@@ -30,6 +32,7 @@ const Sidebar = ({ isOpen, toggle, unsyncedCount }: { isOpen: boolean; toggle: (
   const location = useLocation();
   const menuItems = [
     { path: '/', label: 'Dashboard', icon: <LayoutDashboard size={20} /> },
+    { path: '/calendar', label: 'Escala 2026', icon: <Calendar size={20} /> },
     { path: '/charts', label: 'Supervisório', icon: <PieChart size={20} /> },
     { path: '/pending', label: 'Pendências', icon: <AlertCircle size={20} /> },
     { path: '/history', label: 'Histórico', icon: <FileSpreadsheet size={20} /> },
@@ -92,7 +95,7 @@ const Header = ({ onToggleSidebar, unsyncedCount }: { onToggleSidebar: () => voi
   <header className="sticky top-0 z-30 bg-white/80 backdrop-blur-md border-b border-slate-200 px-6 py-4 flex items-center justify-between">
     <div className="flex items-center gap-4">
       <button onClick={onToggleSidebar} className="lg:hidden p-2 text-slate-600 hover:bg-slate-100 rounded-md"><Menu size={24} /></button>
-      <h2 className="text-slate-800 font-black uppercase text-sm hidden sm:block tracking-tight">Ultrafino • Supervisório v8.0</h2>
+      <h2 className="text-slate-800 font-black uppercase text-sm hidden sm:block tracking-tight">Plataforma Ultrafino v1.4</h2>
     </div>
     <div className="flex items-center gap-4">
       {unsyncedCount > 0 && (
@@ -131,7 +134,6 @@ const App: React.FC = () => {
 
     setIsGlobalSyncing(true);
     try {
-      // Usa os dados manuais se fornecidos (evita o lag do estado do React)
       const reportsToSync = manualReports || reports;
       const pendingToSync = manualPending || pendingItems;
 
@@ -149,7 +151,6 @@ const App: React.FC = () => {
       
       if (stats) setCloudStats(stats);
 
-      // Merge inteligente
       const mergedMap = new Map<string, PendingItem>();
       cloudItems.forEach(item => { if (item.tag) mergedMap.set(item.tag.trim().toUpperCase(), item); });
       pendingToSync.forEach(localItem => {
@@ -184,13 +185,35 @@ const App: React.FC = () => {
     setReports(updatedReports);
     localStorage.setItem('ultrafino_reports', JSON.stringify(updatedReports));
     
-    // 2. Processa novas pendências do checklist
+    // 2. Processa novas pendências do checklist com inteligência de TAG PAI
     const newPendings: PendingItem[] = [];
+    let lastParentTag = "";
+
     (report.items || []).forEach((item, index) => {
-      if (item.status === 'fail' || item.status === 'warning') {
+      const label = item.label;
+      const labelLower = label.toLowerCase();
+      const isSubItem = label.startsWith('-');
+
+      // Identifica TAG pai (equipamentos principais tipo 6C-VF-101 ou 6D-FC-101)
+      if (!isSubItem && !label.startsWith('SECTION:') && /^[0-9][A-Z]-/.test(label)) {
+        lastParentTag = label;
+      }
+      
+      const isOperationalOnly = 
+        labelLower === 'alimentando colunas?' || 
+        labelLower.includes('retorno do tanque 104') || 
+        labelLower.includes('valvula de diluicao') || 
+        labelLower.includes('corse seeding');
+
+      if ((item.status === 'fail' || item.status === 'warning') && !isOperationalOnly) {
+        // Se for subitem e tiver TAG pai, concatena para formar TAG única de manutenção
+        const finalTag = (isSubItem && lastParentTag) 
+          ? `${label.replace('-', '').trim()} ${lastParentTag}`.toUpperCase()
+          : label.toUpperCase();
+
         newPendings.push({
           id: `pend-${Date.now()}-${index}`,
-          tag: item.label.toUpperCase(),
+          tag: finalTag,
           description: item.observation?.trim().toUpperCase() || 'FALHA REPORTADA NO CHECKLIST',
           priority: item.status === 'fail' ? 'alta' : 'media',
           discipline: item.discipline || 'MECÂNICA',
@@ -199,6 +222,7 @@ const App: React.FC = () => {
           timestamp: Date.now(),
           operator: report.operator,
           turma: report.turma,
+          turno: report.turno, 
           synced: false
         });
       }
@@ -215,7 +239,6 @@ const App: React.FC = () => {
       localStorage.setItem('ultrafino_pending', JSON.stringify(updatedPending));
     }
 
-    // 3. Dispara sincronismo passando os dados mais recentes imediatamente
     refreshDataFromCloud(updatedReports, updatedPending);
   };
 
@@ -226,8 +249,8 @@ const App: React.FC = () => {
         status: 'resolvido' as const, 
         resolvedBy: operatorName, 
         resolvedByTurma: resolvedTurma,
-        synced: false, 
-        timestamp: Date.now() 
+        resolvedAt: Date.now(), 
+        synced: false
       } : p
     );
     setPendingItems(updated);
@@ -253,6 +276,7 @@ const App: React.FC = () => {
           <div className="flex-1 p-6">
             <Routes>
               <Route path="/" element={<Dashboard reports={reports} pendingItems={pendingItems} onRefreshCloud={() => refreshDataFromCloud()} isRefreshing={isGlobalSyncing} />} />
+              <Route path="/calendar" element={<ShiftCalendar />} />
               <Route path="/charts" element={<Analytics reports={reports} pendingItems={pendingItems} cloudStats={cloudStats} onRefresh={() => refreshDataFromCloud()} isRefreshing={isGlobalSyncing} syncSource={lastSyncSource} />} />
               <Route path="/checklist/:areaName" element={<ChecklistArea onSaveReport={addReport} />} />
               <Route path="/pending" element={<PendingList pendingItems={pendingItems} onResolve={resolvePending} onRefresh={() => refreshDataFromCloud()} isRefreshing={isGlobalSyncing} onAddComment={() => {}} />} />

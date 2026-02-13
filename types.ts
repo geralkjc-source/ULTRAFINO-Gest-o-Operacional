@@ -51,9 +51,11 @@ export interface PendingItem {
   timestamp: number;
   operator: string;
   turma: Turma;
+  turno: Turno; // Adicionado para suporte a planilhas por turno
   comments?: Comment[];
   synced?: boolean;
   resolvedBy?: string;
   resolvedByTurma?: Turma;
+  resolvedAt?: number; // Data/Hora da resolução
   sourceReportId?: string;
 }

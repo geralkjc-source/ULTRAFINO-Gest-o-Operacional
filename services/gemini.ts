@@ -7,13 +7,15 @@ export const analyzePendingItems = async (items: PendingItem[]): Promise<string>
     return "API Key não configurada. Por favor, contate o administrador.";
   }
 
+  // Initializing GenAI client using the correct pattern
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   
   const context = items.map(i => `- Área: ${i.area}, Descrição: ${i.description}, Prioridade: ${i.priority}`).join('\n');
 
   try {
+    // Upgraded to gemini-3-pro-preview for complex technical analysis as per guidelines
     const response = await ai.models.generateContent({
-      model: 'gemini-3-flash-preview',
+      model: 'gemini-3-pro-preview',
       contents: `Você é um Engenheiro de Manutenção e Especialista em Operações Industriais da planta Ultrafino. 
       Analise as seguintes pendências reportadas e forneça um resumo executivo com:
       1. Principais gargalos detectados por área.
@@ -30,6 +32,7 @@ export const analyzePendingItems = async (items: PendingItem[]): Promise<string>
       }
     });
 
+    // Accessing .text property directly as per modern GenAI SDK
     return response.text || "Não foi possível gerar uma análise no momento.";
   } catch (error) {
     console.error("Gemini Error:", error);
