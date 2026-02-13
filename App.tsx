@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { HashRouter, Routes, Route, Link, useLocation } from 'react-router-dom';
 import { 
   ClipboardCheck, 
@@ -22,11 +22,29 @@ import SyncDashboard from './pages/SyncDashboard';
 import Analytics from './pages/Analytics';
 import ShiftCalendar from './pages/ShiftCalendar';
 import { Area, Report, PendingItem, Turma } from './types';
-import { syncToGoogleSheets, fetchCloudItems, fetchCloudData, CloudStats, DEFAULT_SCRIPT_URL } from './services/googleSync';
+import { syncToGoogleSheets, fetchCloudItems, fetchCloudReports, fetchCloudData, CloudStats, DEFAULT_SCRIPT_URL } from './services/googleSync';
 
 const VulcanLogo = ({ className = "" }: { className?: string }) => (
   <span className={`font-black tracking-tighter select-none ${className}`}>VULCAN</span>
 );
+
+/**
+ * Omni-Sync Monitor
+ * Componente interno que observa a mudança de rotas para disparar o sincronismo automático.
+ */
+const OmniSyncMonitor = ({ onNavigate }: { onNavigate: () => void }) => {
+  const location = useLocation();
+  const lastPath = useRef(location.pathname);
+
+  useEffect(() => {
+    if (location.pathname !== lastPath.current) {
+      onNavigate();
+      lastPath.current = location.pathname;
+    }
+  }, [location, onNavigate]);
+
+  return null;
+};
 
 const Sidebar = ({ isOpen, toggle, unsyncedCount }: { isOpen: boolean; toggle: () => void, unsyncedCount: number }) => {
   const location = useLocation();
@@ -91,11 +109,18 @@ const Sidebar = ({ isOpen, toggle, unsyncedCount }: { isOpen: boolean; toggle: (
   );
 };
 
-const Header = ({ onToggleSidebar, unsyncedCount }: { onToggleSidebar: () => void, unsyncedCount: number }) => (
+const Header = ({ onToggleSidebar, unsyncedCount, isSyncing }: { onToggleSidebar: () => void, unsyncedCount: number, isSyncing: boolean }) => (
   <header className="sticky top-0 z-30 bg-white/80 backdrop-blur-md border-b border-slate-200 px-6 py-4 flex items-center justify-between">
     <div className="flex items-center gap-4">
       <button onClick={onToggleSidebar} className="lg:hidden p-2 text-slate-600 hover:bg-slate-100 rounded-md"><Menu size={24} /></button>
-      <h2 className="text-slate-800 font-black uppercase text-sm hidden sm:block tracking-tight">Plataforma Ultrafino v1.4</h2>
+      <div className="flex flex-col">
+        <h2 className="text-slate-800 font-black uppercase text-xs tracking-tight">Plataforma Ultrafino v2.7</h2>
+        {isSyncing && (
+          <div className="flex items-center gap-1.5 text-blue-600 text-[8px] font-black uppercase animate-pulse">
+            <RefreshCw size={8} className="animate-spin" /> Atualizando Nuvem...
+          </div>
+        )}
+      </div>
     </div>
     <div className="flex items-center gap-4">
       {unsyncedCount > 0 && (
@@ -116,7 +141,7 @@ const App: React.FC = () => {
   const [cloudStats, setCloudStats] = useState<CloudStats | null>(null);
   const [lastSyncSource, setLastSyncSource] = useState<'local' | 'cloud'>('local');
 
-  // Inicialização robusta
+  // Carregamento Inicial
   useEffect(() => {
     try {
       const savedReports = localStorage.getItem('ultrafino_reports');
@@ -128,6 +153,10 @@ const App: React.FC = () => {
 
   const unsyncedCount = reports.filter(r => !r.synced).length + pendingItems.filter(p => !p.synced).length;
 
+  /**
+   * Omni-Sync Function
+   * Sincroniza dados locais com a nuvem e busca novidades.
+   */
   const refreshDataFromCloud = useCallback(async (manualReports?: Report[], manualPending?: PendingItem[]) => {
     const scriptUrl = localStorage.getItem('google_apps_script_url') || DEFAULT_SCRIPT_URL;
     if (!scriptUrl) return;
@@ -140,28 +169,35 @@ const App: React.FC = () => {
       const unsyncedReports = reportsToSync.filter(r => !r.synced);
       const unsyncedPending = pendingToSync.filter(p => !p.synced);
 
+      // Envia o que está pendente localmente
       if (unsyncedReports.length > 0 || unsyncedPending.length > 0) {
         await syncToGoogleSheets(scriptUrl, unsyncedReports, unsyncedPending);
       }
 
-      const [cloudItems, stats] = await Promise.all([
+      // Busca dados atualizados da planilha (Garante hora correta)
+      const [cloudPending, cloudReports, stats] = await Promise.all([
         fetchCloudItems(scriptUrl),
+        fetchCloudReports(scriptUrl),
         fetchCloudData(scriptUrl)
       ]);
       
       if (stats) setCloudStats(stats);
 
-      const mergedMap = new Map<string, PendingItem>();
-      cloudItems.forEach(item => { if (item.tag) mergedMap.set(item.tag.trim().toUpperCase(), item); });
-      pendingToSync.forEach(localItem => {
-        if (!localItem.tag) return;
-        const key = localItem.tag.trim().toUpperCase();
-        if (!localItem.synced) mergedMap.set(key, { ...localItem, synced: true });
-        else if (!mergedMap.has(key)) mergedMap.set(key, { ...localItem, synced: true });
+      // Mesclagem Blindada: Prioridade para dados da nuvem (Vem com a hora fixa da planilha)
+      const reportsMap = new Map<string, Report>();
+      cloudReports.forEach(r => reportsMap.set(r.id, r));
+      reportsToSync.forEach(lr => {
+        if (!lr.synced || !reportsMap.has(lr.id)) reportsMap.set(lr.id, { ...lr, synced: true });
       });
 
-      const finalReports = reportsToSync.map(r => ({ ...r, synced: true }));
-      const finalPending = Array.from(mergedMap.values());
+      const pendingMap = new Map<string, PendingItem>();
+      cloudPending.forEach(p => pendingMap.set(p.id, p));
+      pendingToSync.forEach(lp => {
+        if (!lp.synced || !pendingMap.has(lp.id)) pendingMap.set(lp.id, { ...lp, synced: true });
+      });
+
+      const finalReports = Array.from(reportsMap.values());
+      const finalPending = Array.from(pendingMap.values());
 
       setReports(finalReports);
       setPendingItems(finalPending);
@@ -177,36 +213,26 @@ const App: React.FC = () => {
     }
   }, [reports, pendingItems]);
 
+  // Disparo de Sync ao entrar no App
+  useEffect(() => {
+    refreshDataFromCloud();
+  }, []);
+
   const addReport = (report: Report) => {
     const newReport = { ...report, synced: false };
-    
-    // 1. Atualiza Relatórios
     const updatedReports = [newReport, ...reports];
     setReports(updatedReports);
     localStorage.setItem('ultrafino_reports', JSON.stringify(updatedReports));
     
-    // 2. Processa novas pendências do checklist com inteligência de TAG PAI
     const newPendings: PendingItem[] = [];
     let lastParentTag = "";
 
     (report.items || []).forEach((item, index) => {
       const label = item.label;
-      const labelLower = label.toLowerCase();
       const isSubItem = label.startsWith('-');
-
-      // Identifica TAG pai (equipamentos principais tipo 6C-VF-101 ou 6D-FC-101)
-      if (!isSubItem && !label.startsWith('SECTION:') && /^[0-9][A-Z]-/.test(label)) {
-        lastParentTag = label;
-      }
+      if (!isSubItem && !label.startsWith('SECTION:') && /^[0-9][A-Z]-/.test(label)) lastParentTag = label;
       
-      const isOperationalOnly = 
-        labelLower === 'alimentando colunas?' || 
-        labelLower.includes('retorno do tanque 104') || 
-        labelLower.includes('valvula de diluicao') || 
-        labelLower.includes('corse seeding');
-
-      if ((item.status === 'fail' || item.status === 'warning') && !isOperationalOnly) {
-        // Se for subitem e tiver TAG pai, concatena para formar TAG única de manutenção
+      if ((item.status === 'fail' || item.status === 'warning')) {
         const finalTag = (isSubItem && lastParentTag) 
           ? `${label.replace('-', '').trim()} ${lastParentTag}`.toUpperCase()
           : label.toUpperCase();
@@ -228,17 +254,11 @@ const App: React.FC = () => {
       }
     });
 
-    const updatedPending = [...pendingItems];
-    if (newPendings.length > 0) {
-      newPendings.forEach(newP => {
-        const idx = updatedPending.findIndex(p => p.tag.trim().toUpperCase() === newP.tag.trim().toUpperCase());
-        if (idx > -1) updatedPending[idx] = newP;
-        else updatedPending.push(newP);
-      });
-      setPendingItems(updatedPending);
-      localStorage.setItem('ultrafino_pending', JSON.stringify(updatedPending));
-    }
-
+    const updatedPending = [...pendingItems, ...newPendings];
+    setPendingItems(updatedPending);
+    localStorage.setItem('ultrafino_pending', JSON.stringify(updatedPending));
+    
+    // Sync imediato após envio
     refreshDataFromCloud(updatedReports, updatedPending);
   };
 
@@ -255,6 +275,8 @@ const App: React.FC = () => {
     );
     setPendingItems(updated);
     localStorage.setItem('ultrafino_pending', JSON.stringify(updated));
+    
+    // Sync imediato após resolução
     refreshDataFromCloud(reports, updated);
   };
 
@@ -269,10 +291,15 @@ const App: React.FC = () => {
 
   return (
     <HashRouter>
+      <OmniSyncMonitor onNavigate={() => refreshDataFromCloud()} />
       <div className="flex min-h-screen bg-slate-50">
         <Sidebar isOpen={isSidebarOpen} toggle={() => setIsSidebarOpen(!isSidebarOpen)} unsyncedCount={unsyncedCount} />
         <main className="flex-1 lg:ml-72 flex flex-col">
-          <Header onToggleSidebar={() => setIsSidebarOpen(!isSidebarOpen)} unsyncedCount={unsyncedCount} />
+          <Header 
+            onToggleSidebar={() => setIsSidebarOpen(!isSidebarOpen)} 
+            unsyncedCount={unsyncedCount} 
+            isSyncing={isGlobalSyncing} 
+          />
           <div className="flex-1 p-6">
             <Routes>
               <Route path="/" element={<Dashboard reports={reports} pendingItems={pendingItems} onRefreshCloud={() => refreshDataFromCloud()} isRefreshing={isGlobalSyncing} />} />
@@ -280,7 +307,7 @@ const App: React.FC = () => {
               <Route path="/charts" element={<Analytics reports={reports} pendingItems={pendingItems} cloudStats={cloudStats} onRefresh={() => refreshDataFromCloud()} isRefreshing={isGlobalSyncing} syncSource={lastSyncSource} />} />
               <Route path="/checklist/:areaName" element={<ChecklistArea onSaveReport={addReport} />} />
               <Route path="/pending" element={<PendingList pendingItems={pendingItems} onResolve={resolvePending} onRefresh={() => refreshDataFromCloud()} isRefreshing={isGlobalSyncing} onAddComment={() => {}} />} />
-              <Route path="/history" element={<ReportsHistory reports={reports} onAddItemComment={() => {}} />} />
+              <Route path="/history" element={<ReportsHistory reports={reports} pendingItems={pendingItems} onAddItemComment={() => {}} />} />
               <Route path="/sync" element={<SyncDashboard reports={reports} pendingItems={pendingItems} onSyncSuccess={onSyncSuccess} />} />
             </Routes>
           </div>

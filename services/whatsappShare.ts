@@ -104,25 +104,34 @@ export const formatReportForWhatsApp = (report: Report, itemsWithMaybeSections?:
       if (isMeasurement || isTextInput) {
         let suffix = "";
         
-        // Lógica de Diferença de 3% para Nível vs Setpoint (Regra v1.4)
-        if (labelLower.includes('nível (%)')) {
+        // Lógica de Diferença de 3% para Nível vs Setpoint e Parâmetros de Reagentes (Regra v1.5)
+        const isSetpoint = labelLower.includes('setpoint (%)') || labelLower.includes('set point') || labelLower.includes('actual (%)') || labelLower.includes('atual');
+        const isNivel = labelLower.includes('nível (%)');
+
+        if (isNivel || labelLower.includes('set point')) {
           const nextItem = itemsToFormat[index + 1];
           const nextLabelLower = nextItem?.label.toLowerCase() || "";
-          if (nextItem && (nextLabelLower.includes('setpoint (%)') || nextLabelLower.includes('actual (%)'))) {
-            const valNivel = parseFloat(item.observation || "0");
-            const valSetpoint = parseFloat(nextItem.observation || "0");
+          const isNextTarget = nextLabelLower.includes('setpoint (%)') || nextLabelLower.includes('actual (%)') || nextLabelLower.includes('atual');
+          
+          if (nextItem && isNextTarget) {
+            const val1 = parseFloat(item.observation || "0");
+            const val2 = parseFloat(nextItem.observation || "0");
             if (item.observation && nextItem.observation) {
-               const diff = Math.abs(valNivel - valSetpoint);
+               const diff = Math.abs(val1 - val2);
+               // Para reagentes, o limite pode ser mais sensível, mas mantemos 3% como padrão de conformidade
                suffix = diff < 3 ? " 🟢" : " 🔴";
             }
           }
-        } else if (labelLower.includes('setpoint (%)') || labelLower.includes('actual (%)')) {
+        } else if (labelLower.includes('setpoint (%)') || labelLower.includes('actual (%)') || labelLower.includes('atual')) {
            const prevItem = itemsToFormat[index - 1];
-           if (prevItem && prevItem.label.toLowerCase().includes('nível (%)')) {
-              const valSetpoint = parseFloat(item.observation || "0");
-              const valNivel = parseFloat(prevItem.observation || "0");
+           const prevLabelLower = prevItem?.label.toLowerCase() || "";
+           const isPrevSource = prevLabelLower.includes('nível (%)') || prevLabelLower.includes('set point');
+
+           if (prevItem && isPrevSource) {
+              const valTarget = parseFloat(item.observation || "0");
+              const valSource = parseFloat(prevItem.observation || "0");
               if (item.observation && prevItem.observation) {
-                const diff = Math.abs(valNivel - valSetpoint);
+                const diff = Math.abs(valSource - valTarget);
                 suffix = diff < 3 ? " 🟢" : " 🔴";
               }
            }

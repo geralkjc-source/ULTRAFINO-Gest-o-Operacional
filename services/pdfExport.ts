@@ -163,7 +163,8 @@ export const exportAuditPDF = (items: PendingItem[]) => {
 
     doc.setFillColor(...color);
     doc.rect(230, 8, 52, 8, 'F');
-    doc.text('AUDITORIA MASTER', 256, 13, { align: 'center' });
+    doc.setTextColor(255, 255, 255);
+    doc.text('AUDITORIA MASTER', 256, 13.5, { align: 'center' });
   };
 
   // --- PÁGINA 1: RESOLVIDOS ---
@@ -176,7 +177,7 @@ export const exportAuditPDF = (items: PendingItem[]) => {
     item.discipline,
     item.description.toUpperCase(),
     `T-${item.turma}\n${item.operator}`,
-    new Date(item.resolvedAt!).toLocaleDateString('pt-BR'),
+    item.resolvedAt ? new Date(item.resolvedAt).toLocaleDateString('pt-BR') : '-',
     `T-${item.resolvedByTurma}\n${item.resolvedBy}`
   ]);
 
