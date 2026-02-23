@@ -205,12 +205,20 @@ const ChecklistArea: React.FC<ChecklistAreaProps> = ({ onSaveReport }) => {
       );
     }
 
-    if (labelLower.includes('valvula de diluicao') || labelLower.includes('corse seeding')) {
-       const isNormalClosed = true;
+    if (labelLower.includes('valvula de diluicao')) {
        return (
         <div className="flex bg-slate-100 p-1 rounded-xl border border-slate-200">
-          <button type="button" onClick={() => updateItemStatus(item.id, isNormalClosed ? 'warning' : 'ok', 'ABERTA')} className={`px-6 py-2 rounded-lg text-[9px] font-black uppercase transition-all ${item.observation === 'ABERTA' ? 'bg-blue-600 text-white shadow-lg' : 'text-slate-500'}`}>ABERTA</button>
-          <button type="button" onClick={() => updateItemStatus(item.id, isNormalClosed ? 'ok' : 'fail', 'FECHADA')} className={`px-6 py-2 rounded-lg text-[9px] font-black uppercase transition-all ${item.observation === 'FECHADA' ? 'bg-slate-700 text-white shadow-lg' : 'text-slate-500'}`}>FECHADA</button>
+          <button type="button" onClick={() => updateItemStatus(item.id, 'fail', 'ABERTA')} className={`px-6 py-2 rounded-lg text-[9px] font-black uppercase transition-all ${item.observation === 'ABERTA' ? 'bg-red-600 text-white shadow-lg' : 'text-slate-500'}`}>ABERTA</button>
+          <button type="button" onClick={() => updateItemStatus(item.id, 'ok', 'FECHADA')} className={`px-6 py-2 rounded-lg text-[9px] font-black uppercase transition-all ${item.observation === 'FECHADA' ? 'bg-emerald-600 text-white shadow-lg' : 'text-slate-500'}`}>FECHADA</button>
+        </div>
+      );
+    }
+
+    if (labelLower.includes('corse seeding')) {
+       return (
+        <div className="flex bg-slate-100 p-1 rounded-xl border border-slate-200">
+          <button type="button" onClick={() => updateItemStatus(item.id, 'ok', 'ABERTO')} className={`px-6 py-2 rounded-lg text-[9px] font-black uppercase transition-all ${item.observation === 'ABERTO' ? 'bg-emerald-600 text-white shadow-lg' : 'text-slate-500'}`}>ABERTO</button>
+          <button type="button" onClick={() => updateItemStatus(item.id, 'fail', 'FECHADO')} className={`px-6 py-2 rounded-lg text-[9px] font-black uppercase transition-all ${item.observation === 'FECHADO' ? 'bg-red-600 text-white shadow-lg' : 'text-slate-500'}`}>FECHADO</button>
         </div>
       );
     }
@@ -228,8 +236,8 @@ const ChecklistArea: React.FC<ChecklistAreaProps> = ({ onSaveReport }) => {
     if (labelLower.includes('retorno do tanque 104')) {
        return (
         <div className="flex bg-slate-100 p-1 rounded-xl border border-slate-200">
-          <button type="button" onClick={() => updateItemStatus(item.id, 'ok', 'COM RETORNO')} className={`px-4 py-2 rounded-lg text-[9px] font-black uppercase transition-all ${item.observation === 'COM RETORNO' ? 'bg-emerald-600 text-white shadow-lg' : 'text-slate-500'}`}>COM RETORNO</button>
-          <button type="button" onClick={() => updateItemStatus(item.id, 'fail', 'SEM RETORNO')} className={`px-4 py-2 rounded-lg text-[9px] font-black uppercase transition-all ${item.observation === 'SEM RETORNO' ? 'bg-red-600 text-white shadow-lg' : 'text-slate-500'}`}>SEM RETORNO</button>
+          <button type="button" onClick={() => updateItemStatus(item.id, 'fail', 'COM RETORNO')} className={`px-4 py-2 rounded-lg text-[9px] font-black uppercase transition-all ${item.observation === 'COM RETORNO' ? 'bg-red-600 text-white shadow-lg' : 'text-slate-500'}`}>COM RETORNO</button>
+          <button type="button" onClick={() => updateItemStatus(item.id, 'ok', 'SEM RETORNO')} className={`px-4 py-2 rounded-lg text-[9px] font-black uppercase transition-all ${item.observation === 'SEM RETORNO' ? 'bg-emerald-600 text-white shadow-lg' : 'text-slate-500'}`}>SEM RETORNO</button>
         </div>
       );
     }
@@ -284,7 +292,7 @@ const ChecklistArea: React.FC<ChecklistAreaProps> = ({ onSaveReport }) => {
             <div className="w-24 h-24 bg-emerald-50 text-emerald-500 rounded-full flex items-center justify-center mx-auto mb-4 border-4 border-emerald-100 animate-bounce"><CheckCircleIcon size={56} /></div>
             <div className="space-y-2">
               <h2 className="text-3xl font-black text-slate-900 uppercase tracking-tighter">Relatório Concluído!</h2>
-              <p className="text-slate-500 text-[10px] font-bold uppercase tracking-widest">Plataforma Ultrafino v1.2</p>
+              <p className="text-slate-500 text-[10px] font-bold uppercase tracking-widest">Plataforma Ultrafino Usina 2</p>
             </div>
             <div className="flex flex-col gap-3">
               <button onClick={handleShareWhatsApp} className="w-full bg-[#25D366] hover:bg-[#128C7E] text-white py-5 rounded-[1.5rem] font-black uppercase tracking-widest flex items-center justify-center gap-3 transition-all shadow-xl shadow-emerald-500/20 active:scale-95"><SendIcon size={20} /> Compartilhar Agora</button>
@@ -299,7 +307,7 @@ const ChecklistArea: React.FC<ChecklistAreaProps> = ({ onSaveReport }) => {
         <button onClick={() => navigate(-1)} className="flex items-center gap-2 text-slate-500 hover:text-slate-800 font-black uppercase text-[10px] tracking-widest transition-colors"><ArrowLeftIcon size={16} /> Voltar</button>
         <div className="text-right">
           <h1 className="text-3xl font-black text-slate-900 tracking-tighter uppercase">{currentArea}</h1>
-          <p className="text-slate-400 text-[9px] font-bold uppercase tracking-[0.2em] mt-1">Plataforma Ultrafino v1.2</p>
+          <p className="text-slate-400 text-[9px] font-bold uppercase tracking-[0.2em] mt-1">Plataforma Ultrafino Usina 2</p>
         </div>
       </div>
 
@@ -424,7 +432,7 @@ const ChecklistArea: React.FC<ChecklistAreaProps> = ({ onSaveReport }) => {
 
         <button type="submit" disabled={isSubmitting} className="w-full py-6 rounded-[2rem] bg-slate-900 text-white font-black uppercase tracking-[0.3em] flex items-center justify-center gap-4 shadow-2xl hover:bg-slate-800 transition-all active:scale-95 disabled:opacity-50 text-sm">
           {isSubmitting ? <RotateCcwIcon size={20} className="animate-spin" /> : <SendIcon size={20} />}
-          {isSubmitting ? 'PROCESSANDO...' : 'TRANSMITIR RELATÓRIO v1.2'}
+          {isSubmitting ? 'PROCESSANDO...' : 'TRANSMITIR RELATÓRIO USINA 2'}
         </button>
       </form>
     </div>

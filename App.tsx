@@ -72,7 +72,7 @@ const Sidebar = ({ isOpen, toggle, unsyncedCount }: { isOpen: boolean; toggle: (
                <VulcanLogo className="text-xl text-slate-900" />
             </div>
             <div>
-              <h1 className="font-bold text-lg leading-tight tracking-tight text-white">ULTRAFINO</h1>
+              <h1 className="font-bold text-lg leading-tight tracking-tight text-white">USINA 2</h1>
               <p className="text-slate-500 text-[10px] font-bold uppercase tracking-[0.2em]">Gestão Operacional</p>
             </div>
           </div>
@@ -114,7 +114,7 @@ const Header = ({ onToggleSidebar, unsyncedCount, isSyncing }: { onToggleSidebar
     <div className="flex items-center gap-4">
       <button onClick={onToggleSidebar} className="lg:hidden p-2 text-slate-600 hover:bg-slate-100 rounded-md"><Menu size={24} /></button>
       <div className="flex flex-col">
-        <h2 className="text-slate-800 font-black uppercase text-xs tracking-tight">Plataforma Ultrafino v2.7</h2>
+        <h2 className="text-slate-800 font-black uppercase text-xs tracking-tight">Plataforma Ultrafino Usina 2</h2>
         {isSyncing && (
           <div className="flex items-center gap-1.5 text-blue-600 text-[8px] font-black uppercase animate-pulse">
             <RefreshCw size={8} className="animate-spin" /> Atualizando Nuvem...
@@ -229,10 +229,15 @@ const App: React.FC = () => {
 
     (report.items || []).forEach((item, index) => {
       const label = item.label;
+      const labelLower = label.toLowerCase();
       const isSubItem = label.startsWith('-');
       if (!isSubItem && !label.startsWith('SECTION:') && /^[0-9][A-Z]-/.test(label)) lastParentTag = label;
       
-      if ((item.status === 'fail' || item.status === 'warning')) {
+      const isAuxiliary = labelLower.includes('retorno do tanque 104') || 
+                          labelLower.includes('corse seeding') || 
+                          labelLower.includes('valvula de diluicao');
+
+      if ((item.status === 'fail' || item.status === 'warning') && !isAuxiliary) {
         const finalTag = (isSubItem && lastParentTag) 
           ? `${label.replace('-', '').trim()} ${lastParentTag}`.toUpperCase()
           : label.toUpperCase();

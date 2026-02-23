@@ -9,7 +9,7 @@ interface DayScale {
 }
 
 /**
- * Escala Oficial Vulcan Ultrafino 2026
+ * Escala Oficial Vulcan Ultrafino Usina 2 2026
  * Transcrita fielmente do anexo (Jan-Jun) e projetada para Jul-Dez
  */
 export const SHIFT_DATA_2026: Record<string, { morning: string; afternoon: string; night: string; off: string }> = {

@@ -292,7 +292,7 @@ const Dashboard: React.FC<DashboardProps> = ({ reports, pendingItems, onRefreshC
              <div className="w-12 h-12 rounded-2xl bg-blue-600 flex items-center justify-center font-black text-lg shadow-lg shadow-blue-600/20">V</div>
              <div>
                <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest">Gestão de Planta</p>
-               <p className="text-xs font-black uppercase">Ultrafino 2026</p>
+               <p className="text-xs font-black uppercase">Ultrafino Usina 2 2026</p>
              </div>
           </div>
         </div>

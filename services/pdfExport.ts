@@ -128,7 +128,7 @@ export const exportShiftReportPDF = (items: PendingItem[], meta: PDFMeta) => {
     doc.setPage(i);
     doc.setFontSize(7);
     doc.setTextColor(150);
-    doc.text(`Sistema Vulcan Ultrafino - Relatório de Turno | Página ${i} de ${pageCount}`, 148, 205, { align: 'center' });
+    doc.text(`Sistema Vulcan Ultrafino Usina 2 - Relatório de Turno | Página ${i} de ${pageCount}`, 148, 205, { align: 'center' });
   }
 
   doc.save(`Relatorio_Turno_${meta.turno}_Turma_${meta.turma}_${dateStr.replace(/\//g, '-')}.pdf`);
@@ -226,8 +226,8 @@ export const exportAuditPDF = (items: PendingItem[]) => {
     doc.setPage(i);
     doc.setFontSize(6);
     doc.setTextColor(100);
-    doc.text(`Sistema Vulcan Ultrafino v1.4 | Auditoria Master | Página ${i} de ${pageCount}`, 148, 205, { align: 'center' });
+    doc.text(`Sistema Vulcan Ultrafino Usina 2 v1.4 | Auditoria Master | Página ${i} de ${pageCount}`, 148, 205, { align: 'center' });
   }
 
-  doc.save(`Auditoria_Master_Ultrafino_${dateStr.replace(/\//g, '-')}.pdf`);
+  doc.save(`Auditoria_Master_Ultrafino_Usina_2_${dateStr.replace(/\//g, '-')}.pdf`);
 };
