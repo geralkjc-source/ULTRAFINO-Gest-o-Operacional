@@ -112,6 +112,12 @@ const Dashboard: React.FC<DashboardProps> = ({ reports, pendingItems, onRefreshC
           <h1 className="text-3xl font-black text-slate-900 tracking-tighter uppercase">Painel de Controle</h1>
           <p className="text-slate-500 font-bold uppercase text-[10px] tracking-widest mt-1">Gestão de Checklists e Ativos em Tempo Real</p>
         </div>
+        <button 
+          onClick={() => navigate('/manual-pending')}
+          className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-2xl font-black uppercase text-[10px] tracking-widest flex items-center gap-2 shadow-lg shadow-blue-600/20 transition-all active:scale-95"
+        >
+          <AlertCircle size={16} /> Registrar Pendência Manual
+        </button>
       </div>
 
       <button 

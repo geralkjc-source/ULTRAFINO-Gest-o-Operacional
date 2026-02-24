@@ -305,9 +305,17 @@ const ChecklistArea: React.FC<ChecklistAreaProps> = ({ onSaveReport }) => {
 
       <div className="flex items-center justify-between">
         <button onClick={() => navigate(-1)} className="flex items-center gap-2 text-slate-500 hover:text-slate-800 font-black uppercase text-[10px] tracking-widest transition-colors"><ArrowLeftIcon size={16} /> Voltar</button>
-        <div className="text-right">
-          <h1 className="text-3xl font-black text-slate-900 tracking-tighter uppercase">{currentArea}</h1>
-          <p className="text-slate-400 text-[9px] font-bold uppercase tracking-[0.2em] mt-1">Plataforma Ultrafino Usina 2</p>
+        <div className="flex items-center gap-4">
+          <button 
+            onClick={() => navigate('/manual-pending')}
+            className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-xl font-black uppercase text-[9px] tracking-widest flex items-center gap-2 shadow-lg shadow-blue-600/20 transition-all active:scale-95"
+          >
+            <AlertTriangleIcon size={14} /> Registrar Pendência
+          </button>
+          <div className="text-right">
+            <h1 className="text-3xl font-black text-slate-900 tracking-tighter uppercase">{currentArea}</h1>
+            <p className="text-slate-400 text-[9px] font-bold uppercase tracking-[0.2em] mt-1">Plataforma Ultrafino Usina 2</p>
+          </div>
         </div>
       </div>
 

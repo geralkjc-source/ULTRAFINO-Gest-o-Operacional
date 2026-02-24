@@ -12,7 +12,9 @@ import {
   RefreshCw,
   PieChart,
   Settings,
-  Calendar
+  Calendar,
+  Award,
+  Zap
 } from 'lucide-react';
 import Dashboard from './pages/Dashboard';
 import ChecklistArea from './pages/ChecklistArea';
@@ -21,6 +23,8 @@ import ReportsHistory from './pages/ReportsHistory';
 import SyncDashboard from './pages/SyncDashboard';
 import Analytics from './pages/Analytics';
 import ShiftCalendar from './pages/ShiftCalendar';
+import OperationalForms from './pages/OperationalForms';
+import ManualPendingForm from './pages/ManualPendingForm';
 import { Area, Report, PendingItem, Turma } from './types';
 import { syncToGoogleSheets, fetchCloudItems, fetchCloudReports, fetchCloudData, CloudStats, DEFAULT_SCRIPT_URL } from './services/googleSync';
 
@@ -60,6 +64,7 @@ const Sidebar = ({ isOpen, toggle, unsyncedCount }: { isOpen: boolean; toggle: (
       icon: <Cloud size={20} />, 
       badge: unsyncedCount > 0 ? unsyncedCount : null 
     },
+    { path: '/forms', label: 'Formulários Operacionais', icon: <FileSpreadsheet size={20} /> },
   ];
 
   return (
@@ -285,6 +290,13 @@ const App: React.FC = () => {
     refreshDataFromCloud(reports, updated);
   };
 
+  const addManualPending = (pending: PendingItem) => {
+    const updated = [...pendingItems, { ...pending, synced: false }];
+    setPendingItems(updated);
+    localStorage.setItem('ultrafino_pending', JSON.stringify(updated));
+    refreshDataFromCloud(reports, updated);
+  };
+
   const onSyncSuccess = (syncedReportIds: string[], syncedPendingIds: string[]) => {
     const updatedReports = reports.map(r => syncedReportIds.includes(r.id) ? { ...r, synced: true } : r);
     const updatedPending = pendingItems.map(p => syncedPendingIds.includes(p.id) ? { ...p, synced: true } : p);
@@ -314,6 +326,8 @@ const App: React.FC = () => {
               <Route path="/pending" element={<PendingList pendingItems={pendingItems} onResolve={resolvePending} onRefresh={() => refreshDataFromCloud()} isRefreshing={isGlobalSyncing} onAddComment={() => {}} />} />
               <Route path="/history" element={<ReportsHistory reports={reports} pendingItems={pendingItems} onAddItemComment={() => {}} />} />
               <Route path="/sync" element={<SyncDashboard reports={reports} pendingItems={pendingItems} onSyncSuccess={onSyncSuccess} />} />
+              <Route path="/forms" element={<OperationalForms onAddManualPending={addManualPending} />} />
+              <Route path="/manual-pending" element={<ManualPendingForm onAddManualPending={addManualPending} />} />
             </Routes>
           </div>
         </main>
