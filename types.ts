@@ -32,6 +32,7 @@ export interface Report {
   timestamp: number;
   area: Area;
   operator: string;
+  matricula?: string;
   turma: Turma;
   turno: Turno;
   items: ChecklistItem[];
@@ -58,4 +59,17 @@ export interface PendingItem {
   resolvedByTurma?: Turma;
   resolvedAt?: number; // Data/Hora da resolução
   sourceReportId?: string;
+}
+
+export interface QualityReport {
+  id: string;
+  timestamp: number;
+  operator: string;
+  turma?: Turma;
+  ply?: string;
+  dfp2C: { cr: string; yield: string; rejectAsh: string; concAsh: string };
+  dfp2D: { cr: string; yield: string; rejectAsh: string; concAsh: string };
+  colunaD: { productAsh: string; yield: string; cr: string; tailAsh: string };
+  humidade: { tm: string };
+  synced?: boolean;
 }

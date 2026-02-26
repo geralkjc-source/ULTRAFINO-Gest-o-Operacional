@@ -33,7 +33,7 @@ export const formatSummaryForWhatsApp = (items: PendingItem[], note?: string): s
  */
 export const formatReportForWhatsApp = (report: Report, itemsWithMaybeSections?: ChecklistItem[]): string => {
   const dateStr = new Date(report.timestamp).toLocaleDateString('pt-BR');
-  const timeStr = new Date(report.timestamp).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+  const timeStr = new Date(report.timestamp).toLocaleTimeString('pt-BR', { hour12: false, hour: '2-digit', minute: '2-digit' });
   const turnoAjustado = report.turno.toUpperCase();
 
   let message = `*${report.area.toUpperCase()}*\n`;

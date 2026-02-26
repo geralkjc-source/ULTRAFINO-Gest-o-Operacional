@@ -5,6 +5,7 @@ import { Area, Turma, Turno, ChecklistItem, Report, Discipline } from '../types'
 import { CHECKLIST_TEMPLATES } from '../constants';
 import { formatReportForWhatsApp, shareToWhatsApp, copyToClipboard } from '../services/whatsappShare';
 import { getCurrentShiftInfo } from '../services/shiftService';
+import { fetchEmployees, Employee } from '../services/employeeService';
 
 // Standard Lucide icons
 import { 
@@ -37,6 +38,7 @@ const ChecklistArea: React.FC<ChecklistAreaProps> = ({ onSaveReport }) => {
   const currentArea = areaName ? decodeURIComponent(areaName) as Area : Area.DFP2;
   
   const [operator, setOperator] = useState('');
+  const [matricula, setMatricula] = useState('');
   const [detectedScale, setDetectedScale] = useState<{ turma: Turma; turno: Turno }>(getCurrentShiftInfo());
   const [items, setItems] = useState<ChecklistItem[]>([]);
   const [observations, setObservations] = useState('');
@@ -46,6 +48,17 @@ const ChecklistArea: React.FC<ChecklistAreaProps> = ({ onSaveReport }) => {
   const [validationError, setValidationError] = useState<string | null>(null);
   const [copyFeedback, setCopyFeedback] = useState(false);
   const [isColumnsFeeding, setIsColumnsFeeding] = useState(true);
+  const [employees, setEmployees] = useState<Employee[]>([]);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [showSuggestions, setShowSuggestions] = useState<{ field: string; visible: boolean }>({ field: '', visible: false });
+
+  useEffect(() => {
+    const loadEmployees = async () => {
+      const data = await fetchEmployees();
+      setEmployees(data);
+    };
+    loadEmployees();
+  }, []);
 
   // Sincroniza a escala a cada minuto para garantir precisão em trocas de turno
   useEffect(() => {
@@ -151,6 +164,7 @@ const ChecklistArea: React.FC<ChecklistAreaProps> = ({ onSaveReport }) => {
       timestamp: Date.now(),
       area: currentArea,
       operator,
+      matricula,
       turma: currentScale.turma,
       turno: currentScale.turno,
       items: filteredItems,
@@ -182,6 +196,33 @@ const ChecklistArea: React.FC<ChecklistAreaProps> = ({ onSaveReport }) => {
         setTimeout(() => setCopyFeedback(false), 2000);
       }
     }
+  };
+
+  const handleOperatorChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value.toUpperCase();
+    setOperator(value);
+    setSearchTerm(value);
+    setShowSuggestions({ field: 'operator', visible: value.length > 1 });
+  };
+
+  const handleMatriculaChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    setMatricula(value);
+    setSearchTerm(value);
+    setShowSuggestions({ field: 'matricula', visible: value.length > 1 });
+
+    const exactMatch = employees.find(emp => emp.matricula === value);
+    if (exactMatch) {
+      setOperator(exactMatch.nome.toUpperCase());
+      setMatricula(exactMatch.matricula);
+      setShowSuggestions({ field: '', visible: false });
+    }
+  };
+
+  const selectEmployee = (emp: Employee) => {
+    setOperator(emp.nome.toUpperCase());
+    setMatricula(emp.matricula);
+    setShowSuggestions({ field: '', visible: false });
   };
 
   const renderItemControl = (item: ChecklistItem) => {
@@ -328,9 +369,53 @@ const ChecklistArea: React.FC<ChecklistAreaProps> = ({ onSaveReport }) => {
 
       <form onSubmit={handleSubmit} className="space-y-8 pb-12">
         <div className="bg-white p-8 rounded-[2.5rem] border-2 border-slate-100 shadow-sm grid grid-cols-1 md:grid-cols-2 gap-8">
-          <div className="space-y-3">
+          <div className="space-y-4">
             <label className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] flex items-center gap-2"><UserCogIcon size={14} className="text-blue-500" /> Identificação</label>
-            <input type="text" required placeholder="DIGITE SEU NOME..." value={operator} onChange={(e) => setOperator(e.target.value.toUpperCase())} className="w-full px-6 py-4 bg-slate-50 border-2 border-slate-100 rounded-2xl outline-none font-black uppercase text-sm focus:border-blue-500 focus:bg-white transition-all shadow-inner" />
+            <div className="space-y-4">
+              <div className="relative">
+                <input 
+                  type="text" 
+                  required 
+                  placeholder="DIGITE SEU NOME..." 
+                  value={operator} 
+                  onChange={handleOperatorChange} 
+                  className="w-full px-6 py-4 bg-slate-50 border-2 border-slate-100 rounded-2xl outline-none font-black uppercase text-sm focus:border-blue-500 focus:bg-white transition-all shadow-inner" 
+                  autoComplete="off"
+                />
+                {showSuggestions.visible && showSuggestions.field === 'operator' && (
+                  <div className="absolute z-50 w-full mt-2 bg-white border-2 border-slate-100 rounded-2xl shadow-2xl max-h-60 overflow-y-auto">
+                    {employees.filter(e => e.nome.toLowerCase().includes(searchTerm.toLowerCase())).map(emp => (
+                      <button key={emp.matricula + emp.nome} type="button" onClick={() => selectEmployee(emp)} className="w-full text-left px-6 py-3 hover:bg-slate-50 border-b border-slate-50 last:border-0 flex flex-col">
+                        <span className="font-black text-slate-900 text-xs uppercase">{emp.nome}</span>
+                        <span className="text-[9px] font-bold text-slate-400 uppercase">{emp.matricula} | {emp.funcao} | {emp.equipe}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div className="relative">
+                <input 
+                  type="text" 
+                  required 
+                  placeholder="MATRÍCULA..." 
+                  value={matricula} 
+                  onChange={handleMatriculaChange} 
+                  className="w-full px-6 py-4 bg-slate-50 border-2 border-slate-100 rounded-2xl outline-none font-black uppercase text-sm focus:border-blue-500 focus:bg-white transition-all shadow-inner" 
+                  autoComplete="off"
+                />
+                {showSuggestions.visible && showSuggestions.field === 'matricula' && (
+                  <div className="absolute z-50 w-full mt-2 bg-white border-2 border-slate-100 rounded-2xl shadow-2xl max-h-60 overflow-y-auto">
+                    {employees.filter(e => e.matricula.includes(searchTerm)).map(emp => (
+                      <button key={emp.matricula + emp.nome} type="button" onClick={() => selectEmployee(emp)} className="w-full text-left px-6 py-3 hover:bg-slate-50 border-b border-slate-50 last:border-0 flex flex-col">
+                        <span className="font-black text-slate-900 text-xs uppercase">{emp.matricula}</span>
+                        <span className="text-[9px] font-bold text-slate-400 uppercase">{emp.nome} | {emp.funcao} | {emp.equipe}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
           </div>
           
           {/* PAINEL DE ESCALA AUTOMÁTICA */}

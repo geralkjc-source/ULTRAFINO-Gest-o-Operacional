@@ -19,10 +19,13 @@ import {
   History,
   ShieldAlert,
   BarChart,
-  ChevronRight
+  ChevronRight,
+  Award
 } from 'lucide-react';
 import { Report, PendingItem, Area, Turma, Discipline } from '../types';
 import { CloudStats } from '../services/googleSync';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 
 interface AnalyticsProps {
   reports: Report[];
@@ -94,6 +97,88 @@ const Analytics: React.FC<AnalyticsProps> = ({
 
   const totalMonthlyVolume = pendingItems.length;
 
+  const generateCompliancePDF = () => {
+    const doc = new jsPDF();
+    const now = new Date();
+    const monthName = now.toLocaleString('pt-BR', { month: 'long' }).toUpperCase();
+    const year = now.getFullYear();
+
+    doc.setFillColor(15, 23, 42);
+    doc.rect(0, 0, 210, 35, 'F');
+    doc.setTextColor(255, 255, 255);
+    doc.setFontSize(18);
+    doc.setFont('helvetica', 'bold');
+    doc.text(`CONTROLE DE ENGAJAMENTO - ${monthName} ${year}`, 105, 18, { align: 'center' });
+    doc.setFontSize(9);
+    doc.setFont('helvetica', 'normal');
+    doc.text('META: MÍNIMO DE 3 CHECKLISTS POR OPERADOR EM CADA TURNO', 105, 26, { align: 'center' });
+
+    // Grouping logic for checklists (reports)
+    const currentMonth = now.getMonth();
+    const currentYear = now.getFullYear();
+    
+    const monthlyReports = reports.filter(r => {
+      const d = new Date(r.timestamp);
+      return d.getMonth() === currentMonth && d.getFullYear() === currentYear;
+    });
+
+    // Stats by Operator
+    // We want to see: Operator | Turma | Total Reports | Shifts with Meta (>=3)
+    const operatorStats: { [key: string]: { 
+      count: number, 
+      turma: string, 
+      shifts: { [key: string]: number } 
+    } } = {};
+
+    monthlyReports.forEach(r => {
+      const op = r.operator.toUpperCase();
+      if (!operatorStats[op]) {
+        operatorStats[op] = { count: 0, turma: r.turma || 'N/A', shifts: {} };
+      }
+      operatorStats[op].count++;
+      
+      // Unique key for shift: Date + Turno
+      const dateKey = new Date(r.timestamp).toLocaleDateString() + '-' + (r.turno || 'N/A');
+      operatorStats[op].shifts[dateKey] = (operatorStats[op].shifts[dateKey] || 0) + 1;
+    });
+
+    const body = Object.entries(operatorStats)
+      .sort((a, b) => b[1].count - a[1].count)
+      .map(([name, stats]) => {
+        const totalShifts = Object.keys(stats.shifts).length;
+        const shiftsWithMeta = Object.values(stats.shifts).filter(count => count >= 3).length;
+        const compliance = totalShifts > 0 ? Math.round((shiftsWithMeta / totalShifts) * 100) : 0;
+
+        return [
+          name,
+          stats.turma,
+          stats.count.toString(),
+          `${shiftsWithMeta} / ${totalShifts}`,
+          `${compliance}%`
+        ];
+      });
+
+    autoTable(doc, {
+      startY: 45,
+      head: [['OPERADOR', 'TURMA', 'TOTAL MÊS', 'TURNOS C/ META', 'ENGAJAMENTO']],
+      body: body,
+      theme: 'grid',
+      headStyles: { fillColor: [15, 23, 42], textColor: [255, 255, 255], fontStyle: 'bold' },
+      styles: { fontSize: 8, cellPadding: 3 },
+      columnStyles: {
+        2: { halign: 'center' },
+        3: { halign: 'center' },
+        4: { halign: 'center', fontStyle: 'bold' }
+      }
+    });
+
+    doc.setFontSize(8);
+    doc.setTextColor(100);
+    doc.text(`* Engajamento baseado em turnos onde o operador realizou pelo menos 3 checklists.`, 15, doc.internal.pageSize.getHeight() - 10);
+
+    doc.save(`Engajamento_Operacional_${monthName}_${year}.pdf`);
+  };
+
   return (
     <div className="max-w-7xl mx-auto space-y-8 pb-12 animate-in fade-in duration-500">
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
@@ -104,7 +189,13 @@ const Analytics: React.FC<AnalyticsProps> = ({
           </h1>
           <p className="text-slate-500 font-bold uppercase text-[10px] tracking-widest mt-1">Auditagem de Volume Mensal Acumulado</p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
+          <button 
+            onClick={generateCompliancePDF}
+            className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-xl shadow-lg shadow-blue-600/20 hover:bg-blue-700 transition-all active:scale-95 text-[10px] font-black uppercase tracking-widest"
+          >
+            <Award size={16} /> Engajamento Mensal
+          </button>
           <div className="flex items-center gap-2 bg-white px-4 py-2 rounded-xl border border-slate-200 shadow-sm">
             <span className={`w-2 h-2 rounded-full ${syncSource === 'cloud' ? 'bg-emerald-500' : 'bg-amber-500'} animate-pulse`}></span>
             <span className="text-[10px] font-black text-slate-500 uppercase">Carga Mensal: {syncSource === 'cloud' ? 'Sincronizada' : 'Local'}</span>

@@ -48,7 +48,7 @@ export const exportShiftReport = (
   fileName: string
 ) => {
   const dateStr = new Date().toLocaleDateString('pt-BR');
-  const timeStr = new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+  const timeStr = new Date().toLocaleTimeString('pt-BR', { hour12: false, hour: '2-digit', minute: '2-digit' });
 
   const headerData = [
     ["VULCAN - RELATÓRIO EXECUTIVO DE TURNO"],
@@ -120,9 +120,9 @@ export const exportMasterToExcel = (reports: Report[], pending: PendingItem[], f
     'PRIORIDADE': p.priority.toUpperCase(),
     'EQUIPE ORIGEM': `TURMA ${p.turma}`,
     'OPERADOR': p.operator,
-    'DATA REPORTE': new Date(p.timestamp).toLocaleString('pt-BR'),
+    'DATA REPORTE': new Date(p.timestamp).toLocaleString('pt-BR', { hour12: false }),
     'RESOLVIDO POR': p.resolvedBy ? `${p.resolvedBy} (TURMA ${p.resolvedByTurma})` : "-",
-    'DATA CONCLUSÃO': p.resolvedAt ? new Date(p.resolvedAt).toLocaleString('pt-BR') : "-"
+    'DATA CONCLUSÃO': p.resolvedAt ? new Date(p.resolvedAt).toLocaleString('pt-BR', { hour12: false }) : "-"
   }));
   const wsPending = XLSX.utils.json_to_sheet(pendingData);
   XLSX.utils.book_append_sheet(workbook, wsPending, "DETALHE_TECNICO");

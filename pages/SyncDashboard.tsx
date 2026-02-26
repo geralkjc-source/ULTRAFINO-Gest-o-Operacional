@@ -46,7 +46,7 @@ const SyncDashboard: React.FC<SyncDashboardProps> = ({ reports, pendingItems, on
   }, [scriptUrl]);
 
   const addLog = (msg: string) => {
-    setLogs(prev => [`[${new Date().toLocaleTimeString()}] ${msg}`, ...prev].slice(0, 10));
+    setLogs(prev => [`[${new Date().toLocaleTimeString('pt-BR', { hour12: false })}] ${msg}`, ...prev].slice(0, 10));
   };
 
   const handleTestConnection = async () => {

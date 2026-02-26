@@ -20,17 +20,18 @@ import {
   ExternalLink,
   AlertCircle
 } from 'lucide-react';
-import { Report, PendingItem, Area, Turma } from '../types';
+import { Report, PendingItem, Area, Turma, QualityReport } from '../types';
 import { getScaleForDate, getStatusForTurma } from '../services/shiftService';
 
 interface DashboardProps {
   reports: Report[];
   pendingItems: PendingItem[];
+  qualityReports: QualityReport[];
   onRefreshCloud: () => Promise<void>;
   isRefreshing: boolean;
 }
 
-const Dashboard: React.FC<DashboardProps> = ({ reports, pendingItems, onRefreshCloud, isRefreshing }) => {
+const Dashboard: React.FC<DashboardProps> = ({ reports, pendingItems, qualityReports, onRefreshCloud, isRefreshing }) => {
   const navigate = useNavigate();
   const [todayScale, setTodayScale] = useState(getScaleForDate(new Date()));
 
@@ -105,6 +106,49 @@ const Dashboard: React.FC<DashboardProps> = ({ reports, pendingItems, onRefreshC
     }
   };
 
+  const latestQuality = qualityReports[0];
+
+  const getQualityStatus = (section: 'dfp2C' | 'dfp2D' | 'colunaD' | 'humidade') => {
+    if (!latestQuality) return { color: 'bg-slate-100', label: 'Sem dados', values: '-' };
+
+    const data = (latestQuality as any)[section];
+    if (!data) return { color: 'bg-slate-100', label: 'Dados Incomp.', values: '-' };
+
+    if (section === 'dfp2C' || section === 'dfp2D') {
+      const d = data;
+      const cr = parseFloat(d.cr);
+      const yld = parseFloat(d.yield);
+      const ra = parseFloat(d.rejectAsh);
+      const ca = parseFloat(d.concAsh);
+      const vals = `CR ${d.cr}% | YLD ${d.yield}% | REJ ${d.rejectAsh}% | CONC ${d.concAsh}%`;
+      if (cr < 40 || yld < 35 || ra < 30) return { color: 'bg-red-500', label: 'Alerta Crítico', values: vals };
+      if (ca > 11) return { color: 'bg-amber-500', label: 'Atenção', values: vals };
+      return { color: 'bg-emerald-500', label: 'Normal', values: vals };
+    }
+
+    if (section === 'colunaD') {
+      const d = data;
+      const pa = parseFloat(d.productAsh);
+      const yld = parseFloat(d.yield);
+      const cr = parseFloat(d.cr);
+      const ta = parseFloat(d.tailAsh);
+      const vals = `CR ${d.cr}% | YLD ${d.yield}% | REJ ${d.tailAsh}% | CONC ${d.productAsh}%`;
+      if (pa > 11 || yld < 55 || cr < 65 || ta < 45) return { color: 'bg-red-500', label: 'Fora de Spec', values: vals };
+      return { color: 'bg-emerald-500', label: 'Normal', values: vals };
+    }
+
+    if (section === 'humidade') {
+      const tm = parseFloat(data.tm);
+      const vals = `TM ${data.tm}%`;
+      if (tm > 14.0) return { color: 'bg-red-500', label: 'Muito Alta', values: vals };
+      if (tm > 13.5) return { color: 'bg-amber-500', label: 'Acima Target', values: vals };
+      if (tm < 12.0) return { color: 'bg-blue-500', label: 'Muito Seco', values: vals };
+      return { color: 'bg-emerald-500', label: 'Normal', values: vals };
+    }
+
+    return { color: 'bg-slate-100', label: 'Desconhecido', values: '-' };
+  };
+
   return (
     <div className="space-y-8 pb-10 animate-in fade-in duration-500">
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
@@ -168,6 +212,61 @@ const Dashboard: React.FC<DashboardProps> = ({ reports, pendingItems, onRefreshC
           })}
         </div>
       </button>
+
+      {/* Semáforo de Qualidade - Horizontal Full Width */}
+      <div className="bg-slate-900 rounded-[2.5rem] p-8 text-white shadow-xl border-4 border-slate-800">
+        <div className="flex flex-col md:flex-row md:items-center justify-between mb-8 gap-4">
+          <div>
+            <h3 className="text-xl font-black uppercase tracking-tighter">Semáforo de Qualidade</h3>
+            <p className="text-slate-400 text-[9px] font-bold uppercase tracking-widest mt-1">Status de Produção e Qualidade em Tempo Real</p>
+          </div>
+          <div className="flex items-center gap-4">
+            {latestQuality?.ply && (
+              <div className="px-3 py-1.5 bg-blue-600 rounded-xl text-[9px] font-black uppercase tracking-widest text-white border border-blue-500 shadow-lg shadow-blue-600/20">
+                PLY: {latestQuality.ply}
+              </div>
+            )}
+            <div className="px-3 py-1.5 bg-slate-800 rounded-xl text-[9px] font-black uppercase tracking-widest text-slate-400 border border-slate-700">
+              Último Registro: {latestQuality ? new Date(latestQuality.timestamp).toLocaleTimeString('pt-BR', { hour12: false }) : '--:--'}
+            </div>
+            <button 
+              onClick={() => navigate('/dfp')}
+              className="px-6 py-2 bg-white text-slate-900 rounded-xl font-black uppercase text-[10px] tracking-widest hover:bg-blue-500 hover:text-white transition-all active:scale-95 shadow-lg"
+            >
+              Atualizar
+            </button>
+          </div>
+        </div>
+        
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          {[
+            { id: 'dfp2C', label: 'DFP 2 (C)' },
+            { id: 'dfp2D', label: 'DFP 2 (D)' },
+            { id: 'colunaD', label: 'Colunas D' },
+            { id: 'humidade', label: 'Humidade' },
+          ].map(section => {
+            const status = getQualityStatus(section.id as any);
+            return (
+              <div key={section.id} className="flex flex-col bg-slate-800/40 p-5 rounded-3xl border border-slate-800 hover:border-slate-600 transition-colors group">
+                <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center gap-3">
+                    <div className={`w-3.5 h-3.5 rounded-full ${status.color} shadow-[0_0_15px_rgba(0,0,0,0.5)] animate-pulse`} />
+                    <span className="text-[11px] font-black uppercase tracking-wider text-slate-200">{section.label}</span>
+                  </div>
+                  <span className="text-[8px] font-black text-slate-500 uppercase tracking-widest group-hover:text-slate-300 transition-colors">{status.label}</span>
+                </div>
+                <div className="text-[10px] font-black text-white tracking-tight leading-relaxed">
+                  {status.values.split(' | ').map((v, i) => (
+                    <span key={i} className="inline-block mr-2 last:mr-0">
+                      {v}{i < status.values.split(' | ').length - 1 && <span className="text-slate-600 ml-2">|</span>}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         <AreaCard 
@@ -238,71 +337,6 @@ const Dashboard: React.FC<DashboardProps> = ({ reports, pendingItems, onRefreshC
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 pt-6">
-        <div className="lg:col-span-2 bg-white rounded-[2.5rem] border border-slate-200 shadow-sm overflow-hidden">
-          <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
-            <h2 className="font-black text-slate-900 text-sm uppercase tracking-wider">Histórico Recente</h2>
-            <button onClick={() => navigate('/history')} className="text-blue-600 text-[11px] font-black uppercase tracking-widest hover:underline">Ver Todos</button>
-          </div>
-          <div className="overflow-x-auto">
-            <table className="w-full text-left">
-              <thead>
-                <tr className="bg-slate-50 text-slate-500 text-[9px] font-black uppercase tracking-widest border-b border-slate-100">
-                  <th className="px-6 py-4">Área</th>
-                  <th className="px-6 py-4">Operador</th>
-                  <th className="px-6 py-4">Turno</th>
-                  <th className="px-6 py-4">Status</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {reports.slice(0, 5).map(report => (
-                  <tr key={report.id} className="hover:bg-slate-50/50 transition-colors">
-                    <td className="px-6 py-4">
-                      <span className="font-black text-slate-800 text-xs uppercase">{report.area}</span>
-                    </td>
-                    <td className="px-6 py-4">
-                      <div className="flex flex-col">
-                        <span className="text-slate-700 text-xs font-bold uppercase">{report.operator || 'N/A'}</span>
-                        <span className="text-slate-400 text-[9px] font-black uppercase">Turma {report.turma}</span>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4">
-                      <span className="text-[9px] font-black text-blue-600 uppercase bg-blue-50 px-2 py-1 rounded border border-blue-100">
-                        {report.turno}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4">
-                      <div className="flex items-center gap-2">
-                        {report.synced ? <Cloud size={14} className="text-emerald-500" /> : <CloudOff size={14} className="text-amber-400" />}
-                        <span className={`text-[9px] font-black uppercase ${report.synced ? 'text-emerald-600' : 'text-amber-600'}`}>
-                          {report.synced ? 'Nuvem' : 'Local'}
-                        </span>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-
-        <div className="bg-slate-900 rounded-[3rem] p-8 text-white shadow-2xl relative overflow-hidden flex flex-col justify-center border-4 border-slate-800">
-          <div className="absolute top-0 right-0 p-8 opacity-10 animate-spin-slow">
-            <RotateCw size={140} />
-          </div>
-          <h3 className="text-xl font-black uppercase tracking-tighter mb-2 relative z-10">Segurança em Primeiro Lugar</h3>
-          <p className="text-slate-400 text-[11px] leading-relaxed font-bold uppercase tracking-wider italic relative z-10">
-            "Checklists precisos salvam vidas e equipamentos. Reporte anomalias imediatamente."
-          </p>
-          <div className="mt-8 flex items-center gap-4 relative z-10">
-             <div className="w-12 h-12 rounded-2xl bg-blue-600 flex items-center justify-center font-black text-lg shadow-lg shadow-blue-600/20">V</div>
-             <div>
-               <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest">Gestão de Planta</p>
-               <p className="text-xs font-black uppercase">Ultrafino Usina 2 2026</p>
-             </div>
-          </div>
-        </div>
-      </div>
     </div>
   );
 };

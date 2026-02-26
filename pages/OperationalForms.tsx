@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import { Area, Turma, Turno, Discipline, PendingItem } from '../types';
 import { getCurrentShiftInfo } from '../services/shiftService';
+import { fetchEmployees, Employee } from '../services/employeeService';
 
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -34,13 +35,26 @@ const OperationalForms: React.FC<OperationalFormsProps> = ({ onAddManualPending 
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
+  const [employees, setEmployees] = useState<Employee[]>([]);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [showSuggestions, setShowSuggestions] = useState<{ field: string; visible: boolean }>({ field: '', visible: false });
+
+  useEffect(() => {
+    const loadEmployees = async () => {
+      const data = await fetchEmployees();
+      setEmployees(data);
+    };
+    loadEmployees();
+  }, []);
 
   // Praise Form State
   const [praiseData, setPraiseData] = useState({
     elogioNome: '',
+    elogioMatricula: '',
     elogioDepartamento: '',
     elogioFuncao: '',
     quemElogiaNome: '',
+    quemElogiaMatricula: '',
     quemElogiaDepartamento: '',
     quemElogiaFuncao: '',
     dataElogio: '',
@@ -53,6 +67,7 @@ const OperationalForms: React.FC<OperationalFormsProps> = ({ onAddManualPending 
   // Failure Form State
   const [failureData, setFailureData] = useState({
     colaboradorNome: '',
+    colaboradorMatricula: '',
     colaboradorDepartamento: '',
     colaboradorFuncao: '',
     dataOcorrencia: '',
@@ -70,7 +85,7 @@ const OperationalForms: React.FC<OperationalFormsProps> = ({ onAddManualPending 
 
   const generatePraisePDF = (data: typeof praiseData) => {
     const doc = new jsPDF();
-    const timestamp = new Date().toLocaleString();
+    const timestamp = new Date().toLocaleString('pt-BR', { hour12: false });
 
     doc.setFontSize(18);
     doc.text('FORMULÁRIO DE ELOGIO OPERACIONAL', 105, 20, { align: 'center' });
@@ -83,10 +98,12 @@ const OperationalForms: React.FC<OperationalFormsProps> = ({ onAddManualPending 
       body: [
         ['1. DADOS DO COLABORADOR ELOGIADO', ''],
         ['Nome', data.elogioNome],
+        ['Matrícula', data.elogioMatricula],
         ['Departamento / Equipa', data.elogioDepartamento],
         ['Função', data.elogioFuncao],
         ['2. DADOS DE QUEM ELOGIA', ''],
         ['Nome', data.quemElogiaNome],
+        ['Matrícula', data.quemElogiaMatricula],
         ['Departamento / Função', data.quemElogiaDepartamento],
         ['Função', data.quemElogiaFuncao],
         ['3. DATA DO ELOGIO', data.dataElogio],
@@ -109,7 +126,7 @@ const OperationalForms: React.FC<OperationalFormsProps> = ({ onAddManualPending 
 
   const generateFailurePDF = (data: typeof failureData) => {
     const doc = new jsPDF();
-    const timestamp = new Date().toLocaleString();
+    const timestamp = new Date().toLocaleString('pt-BR', { hour12: false });
 
     doc.setFontSize(18);
     doc.text('FORMULÁRIO DE FALHA OPERACIONAL', 105, 20, { align: 'center' });
@@ -122,6 +139,7 @@ const OperationalForms: React.FC<OperationalFormsProps> = ({ onAddManualPending 
       body: [
         ['1. DADOS DO COLABORADOR ENVOLVIDO', ''],
         ['Nome', data.colaboradorNome],
+        ['Matrícula', data.colaboradorMatricula],
         ['Departamento / Equipa', data.colaboradorDepartamento],
         ['Função', data.colaboradorFuncao],
         ['2. DATA E HORA DA OCORRÊNCIA', `${data.dataOcorrencia} ${data.horaOcorrencia}`],
@@ -149,11 +167,66 @@ const OperationalForms: React.FC<OperationalFormsProps> = ({ onAddManualPending 
   const handlePraiseChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
     setPraiseData(prev => ({ ...prev, [name]: value }));
+    
+    if (name === 'elogioNome' || name === 'quemElogiaNome' || name === 'elogioMatricula' || name === 'quemElogiaMatricula') {
+      setSearchTerm(value);
+      setShowSuggestions({ field: name, visible: value.length > 1 });
+      
+      // Auto-fill if exact matrícula match
+      if (name === 'elogioMatricula' || name === 'quemElogiaMatricula') {
+        const exactMatch = employees.find(emp => emp.matricula === value);
+        if (exactMatch) {
+          selectEmployee(exactMatch, name === 'elogioMatricula' ? 'elogioNome' : 'quemElogiaNome');
+        }
+      }
+    }
+  };
+
+  const selectEmployee = (emp: Employee, field: string) => {
+    if (field === 'elogioNome') {
+      setPraiseData(prev => ({
+        ...prev,
+        elogioNome: emp.nome,
+        elogioMatricula: emp.matricula,
+        elogioDepartamento: emp.equipe,
+        elogioFuncao: emp.funcao
+      }));
+    } else if (field === 'quemElogiaNome') {
+      setPraiseData(prev => ({
+        ...prev,
+        quemElogiaNome: emp.nome,
+        quemElogiaMatricula: emp.matricula,
+        quemElogiaDepartamento: emp.equipe,
+        quemElogiaFuncao: emp.funcao
+      }));
+    } else if (field === 'colaboradorNome') {
+      setFailureData(prev => ({
+        ...prev,
+        colaboradorNome: emp.nome,
+        colaboradorMatricula: emp.matricula,
+        colaboradorDepartamento: emp.equipe,
+        colaboradorFuncao: emp.funcao
+      }));
+    }
+    setShowSuggestions({ field: '', visible: false });
   };
 
   const handleFailureChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
     setFailureData(prev => ({ ...prev, [name]: value }));
+
+    if (name === 'colaboradorNome' || name === 'colaboradorMatricula') {
+      setSearchTerm(value);
+      setShowSuggestions({ field: name, visible: value.length > 1 });
+
+      // Auto-fill if exact matrícula match
+      if (name === 'colaboradorMatricula') {
+        const exactMatch = employees.find(emp => emp.matricula === value);
+        if (exactMatch) {
+          selectEmployee(exactMatch, 'colaboradorNome');
+        }
+      }
+    }
   };
 
   const handleFailureCheckboxChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -288,7 +361,32 @@ const OperationalForms: React.FC<OperationalFormsProps> = ({ onAddManualPending 
           {/* Dados do Colaborador Elogiado */}
           <div className="bg-white p-8 rounded-[2.5rem] border-2 border-slate-100 shadow-sm space-y-6">
             <h2 className="text-[11px] font-black text-slate-900 uppercase tracking-[0.2em] flex items-center gap-2"><UserIcon size={16} className="text-blue-500" /> 1. Dados do Colaborador Elogiado</h2>
-            <input type="text" name="elogioNome" placeholder="Nome" value={praiseData.elogioNome} onChange={handlePraiseChange} className="w-full px-6 py-4 bg-slate-50 border-2 border-slate-100 rounded-2xl outline-none font-black uppercase text-sm focus:border-blue-500 focus:bg-white transition-all shadow-inner" required />
+            <div className="relative">
+              <input type="text" name="elogioNome" placeholder="Nome" value={praiseData.elogioNome} onChange={handlePraiseChange} className="w-full px-6 py-4 bg-slate-50 border-2 border-slate-100 rounded-2xl outline-none font-black uppercase text-sm focus:border-blue-500 focus:bg-white transition-all shadow-inner" required autoComplete="off" />
+              {showSuggestions.visible && showSuggestions.field === 'elogioNome' && (
+                <div className="absolute z-50 w-full mt-2 bg-white border-2 border-slate-100 rounded-2xl shadow-2xl max-h-60 overflow-y-auto">
+                  {employees.filter(e => e.nome.toLowerCase().includes(searchTerm.toLowerCase())).map(emp => (
+                    <button key={emp.matricula + emp.nome} type="button" onClick={() => selectEmployee(emp, 'elogioNome')} className="w-full text-left px-6 py-3 hover:bg-slate-50 border-b border-slate-50 last:border-0 flex flex-col">
+                      <span className="font-black text-slate-900 text-xs uppercase">{emp.nome}</span>
+                      <span className="text-[9px] font-bold text-slate-400 uppercase">{emp.matricula} | {emp.funcao} | {emp.equipe}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+            <div className="relative">
+              <input type="text" name="elogioMatricula" placeholder="Matrícula" value={praiseData.elogioMatricula} onChange={handlePraiseChange} className="w-full px-6 py-4 bg-slate-50 border-2 border-slate-100 rounded-2xl outline-none font-black uppercase text-sm focus:border-blue-500 focus:bg-white transition-all shadow-inner" required autoComplete="off" />
+              {showSuggestions.visible && showSuggestions.field === 'elogioMatricula' && (
+                <div className="absolute z-50 w-full mt-2 bg-white border-2 border-slate-100 rounded-2xl shadow-2xl max-h-60 overflow-y-auto">
+                  {employees.filter(e => e.matricula.includes(searchTerm)).map(emp => (
+                    <button key={emp.matricula + emp.nome} type="button" onClick={() => selectEmployee(emp, 'elogioNome')} className="w-full text-left px-6 py-3 hover:bg-slate-50 border-b border-slate-50 last:border-0 flex flex-col">
+                      <span className="font-black text-slate-900 text-xs uppercase">{emp.matricula}</span>
+                      <span className="text-[9px] font-bold text-slate-400 uppercase">{emp.nome} | {emp.funcao} | {emp.equipe}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
             <input type="text" name="elogioDepartamento" placeholder="Departamento / Equipa" value={praiseData.elogioDepartamento} onChange={handlePraiseChange} className="w-full px-6 py-4 bg-slate-50 border-2 border-slate-100 rounded-2xl outline-none font-black uppercase text-sm focus:border-blue-500 focus:bg-white transition-all shadow-inner" required />
             <input type="text" name="elogioFuncao" placeholder="Função" value={praiseData.elogioFuncao} onChange={handlePraiseChange} className="w-full px-6 py-4 bg-slate-50 border-2 border-slate-100 rounded-2xl outline-none font-black uppercase text-sm focus:border-blue-500 focus:bg-white transition-all shadow-inner" required />
           </div>
@@ -296,7 +394,32 @@ const OperationalForms: React.FC<OperationalFormsProps> = ({ onAddManualPending 
           {/* Dados de Quem Elogia */}
           <div className="bg-white p-8 rounded-[2.5rem] border-2 border-slate-100 shadow-sm space-y-6">
             <h2 className="text-[11px] font-black text-slate-900 uppercase tracking-[0.2em] flex items-center gap-2"><UserIcon size={16} className="text-blue-500" /> 2. Dados de Quem Elogia</h2>
-            <input type="text" name="quemElogiaNome" placeholder="Nome" value={praiseData.quemElogiaNome} onChange={handlePraiseChange} className="w-full px-6 py-4 bg-slate-50 border-2 border-slate-100 rounded-2xl outline-none font-black uppercase text-sm focus:border-blue-500 focus:bg-white transition-all shadow-inner" required />
+            <div className="relative">
+              <input type="text" name="quemElogiaNome" placeholder="Nome" value={praiseData.quemElogiaNome} onChange={handlePraiseChange} className="w-full px-6 py-4 bg-slate-50 border-2 border-slate-100 rounded-2xl outline-none font-black uppercase text-sm focus:border-blue-500 focus:bg-white transition-all shadow-inner" required autoComplete="off" />
+              {showSuggestions.visible && showSuggestions.field === 'quemElogiaNome' && (
+                <div className="absolute z-50 w-full mt-2 bg-white border-2 border-slate-100 rounded-2xl shadow-2xl max-h-60 overflow-y-auto">
+                  {employees.filter(e => e.nome.toLowerCase().includes(searchTerm.toLowerCase())).map(emp => (
+                    <button key={emp.matricula + emp.nome} type="button" onClick={() => selectEmployee(emp, 'quemElogiaNome')} className="w-full text-left px-6 py-3 hover:bg-slate-50 border-b border-slate-50 last:border-0 flex flex-col">
+                      <span className="font-black text-slate-900 text-xs uppercase">{emp.nome}</span>
+                      <span className="text-[9px] font-bold text-slate-400 uppercase">{emp.matricula} | {emp.funcao} | {emp.equipe}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+            <div className="relative">
+              <input type="text" name="quemElogiaMatricula" placeholder="Matrícula" value={praiseData.quemElogiaMatricula} onChange={handlePraiseChange} className="w-full px-6 py-4 bg-slate-50 border-2 border-slate-100 rounded-2xl outline-none font-black uppercase text-sm focus:border-blue-500 focus:bg-white transition-all shadow-inner" required autoComplete="off" />
+              {showSuggestions.visible && showSuggestions.field === 'quemElogiaMatricula' && (
+                <div className="absolute z-50 w-full mt-2 bg-white border-2 border-slate-100 rounded-2xl shadow-2xl max-h-60 overflow-y-auto">
+                  {employees.filter(e => e.matricula.includes(searchTerm)).map(emp => (
+                    <button key={emp.matricula + emp.nome} type="button" onClick={() => selectEmployee(emp, 'quemElogiaNome')} className="w-full text-left px-6 py-3 hover:bg-slate-50 border-b border-slate-50 last:border-0 flex flex-col">
+                      <span className="font-black text-slate-900 text-xs uppercase">{emp.matricula}</span>
+                      <span className="text-[9px] font-bold text-slate-400 uppercase">{emp.nome} | {emp.funcao} | {emp.equipe}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
             <input type="text" name="quemElogiaDepartamento" placeholder="Departamento / Função" value={praiseData.quemElogiaDepartamento} onChange={handlePraiseChange} className="w-full px-6 py-4 bg-slate-50 border-2 border-slate-100 rounded-2xl outline-none font-black uppercase text-sm focus:border-blue-500 focus:bg-white transition-all shadow-inner" required />
             <input type="text" name="quemElogiaFuncao" placeholder="Função" value={praiseData.quemElogiaFuncao} onChange={handlePraiseChange} className="w-full px-6 py-4 bg-slate-50 border-2 border-slate-100 rounded-2xl outline-none font-black uppercase text-sm focus:border-blue-500 focus:bg-white transition-all shadow-inner" required />
           </div>
@@ -337,7 +460,32 @@ const OperationalForms: React.FC<OperationalFormsProps> = ({ onAddManualPending 
           {/* Dados do Colaborador Envolvido */}
           <div className="bg-white p-8 rounded-[2.5rem] border-2 border-slate-100 shadow-sm space-y-6">
             <h2 className="text-[11px] font-black text-slate-900 uppercase tracking-[0.2em] flex items-center gap-2"><UserIcon size={16} className="text-red-500" /> 1. Dados do Colaborador Envolvido</h2>
-            <input type="text" name="colaboradorNome" placeholder="Nome" value={failureData.colaboradorNome} onChange={handleFailureChange} className="w-full px-6 py-4 bg-slate-50 border-2 border-slate-100 rounded-2xl outline-none font-black uppercase text-sm focus:border-red-500 focus:bg-white transition-all shadow-inner" required />
+            <div className="relative">
+              <input type="text" name="colaboradorNome" placeholder="Nome" value={failureData.colaboradorNome} onChange={handleFailureChange} className="w-full px-6 py-4 bg-slate-50 border-2 border-slate-100 rounded-2xl outline-none font-black uppercase text-sm focus:border-red-500 focus:bg-white transition-all shadow-inner" required autoComplete="off" />
+              {showSuggestions.visible && showSuggestions.field === 'colaboradorNome' && (
+                <div className="absolute z-50 w-full mt-2 bg-white border-2 border-slate-100 rounded-2xl shadow-2xl max-h-60 overflow-y-auto">
+                  {employees.filter(e => e.nome.toLowerCase().includes(searchTerm.toLowerCase())).map(emp => (
+                    <button key={emp.matricula + emp.nome} type="button" onClick={() => selectEmployee(emp, 'colaboradorNome')} className="w-full text-left px-6 py-3 hover:bg-slate-50 border-b border-slate-50 last:border-0 flex flex-col">
+                      <span className="font-black text-slate-900 text-xs uppercase">{emp.nome}</span>
+                      <span className="text-[9px] font-bold text-slate-400 uppercase">{emp.matricula} | {emp.funcao} | {emp.equipe}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+            <div className="relative">
+              <input type="text" name="colaboradorMatricula" placeholder="Matrícula" value={failureData.colaboradorMatricula} onChange={handleFailureChange} className="w-full px-6 py-4 bg-slate-50 border-2 border-slate-100 rounded-2xl outline-none font-black uppercase text-sm focus:border-red-500 focus:bg-white transition-all shadow-inner" required autoComplete="off" />
+              {showSuggestions.visible && showSuggestions.field === 'colaboradorMatricula' && (
+                <div className="absolute z-50 w-full mt-2 bg-white border-2 border-slate-100 rounded-2xl shadow-2xl max-h-60 overflow-y-auto">
+                  {employees.filter(e => e.matricula.includes(searchTerm)).map(emp => (
+                    <button key={emp.matricula + emp.nome} type="button" onClick={() => selectEmployee(emp, 'colaboradorNome')} className="w-full text-left px-6 py-3 hover:bg-slate-50 border-b border-slate-50 last:border-0 flex flex-col">
+                      <span className="font-black text-slate-900 text-xs uppercase">{emp.matricula}</span>
+                      <span className="text-[9px] font-bold text-slate-400 uppercase">{emp.nome} | {emp.funcao} | {emp.equipe}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
             <input type="text" name="colaboradorDepartamento" placeholder="Departamento / Equipa" value={failureData.colaboradorDepartamento} onChange={handleFailureChange} className="w-full px-6 py-4 bg-slate-50 border-2 border-slate-100 rounded-2xl outline-none font-black uppercase text-sm focus:border-red-500 focus:bg-white transition-all shadow-inner" required />
             <input type="text" name="colaboradorFuncao" placeholder="Função" value={failureData.colaboradorFuncao} onChange={handleFailureChange} className="w-full px-6 py-4 bg-slate-50 border-2 border-slate-100 rounded-2xl outline-none font-black uppercase text-sm focus:border-red-500 focus:bg-white transition-all shadow-inner" required />
           </div>

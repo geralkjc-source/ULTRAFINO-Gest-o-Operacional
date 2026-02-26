@@ -24,8 +24,9 @@ import SyncDashboard from './pages/SyncDashboard';
 import Analytics from './pages/Analytics';
 import ShiftCalendar from './pages/ShiftCalendar';
 import OperationalForms from './pages/OperationalForms';
+import DFPResults from './pages/DFPResults';
 import ManualPendingForm from './pages/ManualPendingForm';
-import { Area, Report, PendingItem, Turma } from './types';
+import { Area, Report, PendingItem, Turma, QualityReport } from './types';
 import { syncToGoogleSheets, fetchCloudItems, fetchCloudReports, fetchCloudData, CloudStats, DEFAULT_SCRIPT_URL } from './services/googleSync';
 
 const VulcanLogo = ({ className = "" }: { className?: string }) => (
@@ -64,6 +65,7 @@ const Sidebar = ({ isOpen, toggle, unsyncedCount }: { isOpen: boolean; toggle: (
       icon: <Cloud size={20} />, 
       badge: unsyncedCount > 0 ? unsyncedCount : null 
     },
+    { path: '/dfp', label: 'Qualidade e Yield', icon: <PieChart size={20} /> },
     { path: '/forms', label: 'Formulários Operacionais', icon: <FileSpreadsheet size={20} /> },
   ];
 
@@ -142,6 +144,7 @@ const App: React.FC = () => {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [reports, setReports] = useState<Report[]>([]);
   const [pendingItems, setPendingItems] = useState<PendingItem[]>([]);
+  const [qualityReports, setQualityReports] = useState<QualityReport[]>([]);
   const [isGlobalSyncing, setIsGlobalSyncing] = useState(false);
   const [cloudStats, setCloudStats] = useState<CloudStats | null>(null);
   const [lastSyncSource, setLastSyncSource] = useState<'local' | 'cloud'>('local');
@@ -151,8 +154,10 @@ const App: React.FC = () => {
     try {
       const savedReports = localStorage.getItem('ultrafino_reports');
       const savedPending = localStorage.getItem('ultrafino_pending');
+      const savedQuality = localStorage.getItem('ultrafino_quality');
       if (savedReports) setReports(JSON.parse(savedReports));
       if (savedPending) setPendingItems(JSON.parse(savedPending));
+      if (savedQuality) setQualityReports(JSON.parse(savedQuality));
     } catch (e) { console.error("Initial Load Error", e); }
   }, []);
 
@@ -297,6 +302,13 @@ const App: React.FC = () => {
     refreshDataFromCloud(reports, updated);
   };
 
+  const addQualityReport = (report: QualityReport) => {
+    const updated = [report, ...qualityReports];
+    setQualityReports(updated);
+    localStorage.setItem('ultrafino_quality', JSON.stringify(updated));
+    // For now, quality reports are local only or we could sync them too if needed
+  };
+
   const onSyncSuccess = (syncedReportIds: string[], syncedPendingIds: string[]) => {
     const updatedReports = reports.map(r => syncedReportIds.includes(r.id) ? { ...r, synced: true } : r);
     const updatedPending = pendingItems.map(p => syncedPendingIds.includes(p.id) ? { ...p, synced: true } : p);
@@ -319,13 +331,14 @@ const App: React.FC = () => {
           />
           <div className="flex-1 p-6">
             <Routes>
-              <Route path="/" element={<Dashboard reports={reports} pendingItems={pendingItems} onRefreshCloud={() => refreshDataFromCloud()} isRefreshing={isGlobalSyncing} />} />
+              <Route path="/" element={<Dashboard reports={reports} pendingItems={pendingItems} qualityReports={qualityReports} onRefreshCloud={() => refreshDataFromCloud()} isRefreshing={isGlobalSyncing} />} />
               <Route path="/calendar" element={<ShiftCalendar />} />
               <Route path="/charts" element={<Analytics reports={reports} pendingItems={pendingItems} cloudStats={cloudStats} onRefresh={() => refreshDataFromCloud()} isRefreshing={isGlobalSyncing} syncSource={lastSyncSource} />} />
               <Route path="/checklist/:areaName" element={<ChecklistArea onSaveReport={addReport} />} />
               <Route path="/pending" element={<PendingList pendingItems={pendingItems} onResolve={resolvePending} onRefresh={() => refreshDataFromCloud()} isRefreshing={isGlobalSyncing} onAddComment={() => {}} />} />
               <Route path="/history" element={<ReportsHistory reports={reports} pendingItems={pendingItems} onAddItemComment={() => {}} />} />
               <Route path="/sync" element={<SyncDashboard reports={reports} pendingItems={pendingItems} onSyncSuccess={onSyncSuccess} />} />
+              <Route path="/dfp" element={<DFPResults onSaveQualityReport={addQualityReport} qualityReports={qualityReports} />} />
               <Route path="/forms" element={<OperationalForms onAddManualPending={addManualPending} />} />
               <Route path="/manual-pending" element={<ManualPendingForm onAddManualPending={addManualPending} />} />
             </Routes>
