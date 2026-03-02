@@ -127,7 +127,7 @@ const ChecklistArea: React.FC<ChecklistAreaProps> = ({ onSaveReport }) => {
       }
 
       if (item.label === 'ALIMENTANDO COLUNAS?' && item.status === 'fail') {
-        return !item.observation || item.observation === 'NÃO' || item.observation.trim() === '';
+        return false; // Não gera pendência para 'NÃO' em ALIMENTANDO COLUNAS?
       }
 
       if (!isColumnsFeeding && (labelLower.includes('coluna') || labelLower.includes('-fc-') || labelLower.includes('frother') || labelLower.includes('colector') || labelLower.includes('feed rate colunas'))) {
@@ -486,7 +486,7 @@ const ChecklistArea: React.FC<ChecklistAreaProps> = ({ onSaveReport }) => {
                       {renderItemControl(item)}
                     </div>
                     
-                    {(isFailOrWarning || isNoFeedButNeedsObs) && !isAuxiliaryItem && (
+                    {(isFailOrWarning || isNoFeedButNeedsObs) && !isAuxiliaryItem && !(item.label === 'ALIMENTANDO COLUNAS?' && item.status === 'fail') && (
                       <div className="p-6 bg-slate-50 rounded-[2rem] space-y-6 border-2 border-slate-100 animate-in slide-in-from-top-4 duration-300">
                         {isFailOrWarning && !isSimplifiedItem && (
                           <div className="space-y-4">

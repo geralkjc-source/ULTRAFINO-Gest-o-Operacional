@@ -20,18 +20,21 @@ import {
   FileSpreadsheet,
   ExternalLink
 } from 'lucide-react';
-import { Report, PendingItem } from '../types';
+
 import { syncToGoogleSheets, testScriptConnection, DEFAULT_SCRIPT_URL, MASTER_SHEET_URL } from '../services/googleSync';
+import { Report, PendingItem, QualityReport } from '../types';
 
 const ADMIN_PASSWORD = 'ULTRAADMIN'; 
+
 
 interface SyncDashboardProps {
   reports: Report[];
   pendingItems: PendingItem[];
-  onSyncSuccess: (syncedReportIds: string[], syncedPendingIds: string[]) => void;
+  qualityReports: QualityReport[];
+  onSyncSuccess: (syncedReportIds: string[], syncedPendingIds: string[], syncedQualityReportIds: string[]) => void;
 }
 
-const SyncDashboard: React.FC<SyncDashboardProps> = ({ reports, pendingItems, onSyncSuccess }) => {
+const SyncDashboard: React.FC<SyncDashboardProps> = ({ reports, pendingItems, qualityReports, onSyncSuccess }) => {
   const [isSyncing, setIsSyncing] = useState(false);
   const [scriptUrl, setScriptUrl] = useState(localStorage.getItem('google_apps_script_url') || DEFAULT_SCRIPT_URL);
   const [showConfig, setshowConfig] = useState(false);
@@ -67,10 +70,11 @@ const SyncDashboard: React.FC<SyncDashboardProps> = ({ reports, pendingItems, on
     addLog("Transmissão Vulcan v3.1 em curso...");
     const unsyncedReports = reports.filter(r => !r.synced);
     const unsyncedPending = pendingItems.filter(p => !p.synced);
+    const unsyncedQualityReports = qualityReports.filter(qr => !qr.synced);
     
-    const result = await syncToGoogleSheets(scriptUrl, unsyncedReports, unsyncedPending);
+    const result = await syncToGoogleSheets(scriptUrl, unsyncedReports, unsyncedPending, unsyncedQualityReports);
     if (result.success) {
-      onSyncSuccess(unsyncedReports.map(r => r.id), unsyncedPending.map(p => p.id));
+      onSyncSuccess(unsyncedReports.map(r => r.id), unsyncedPending.map(p => p.id), unsyncedQualityReports.map(qr => qr.id));
       addLog("Sincronismo v3.1 Concluído.");
     } else {
       addLog("Falha no sincronismo v3.1.");

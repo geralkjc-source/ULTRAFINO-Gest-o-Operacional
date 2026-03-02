@@ -1,5 +1,5 @@
 
-import { Report, PendingItem, Area } from '../types';
+import { Report, PendingItem, Area, QualityReport } from '../types';
 
 // Endpoint oficial v3.0
 export const DEFAULT_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwPoZk1y0cw4gZtQRMAR9ix0ZvMbgeqZA7fVveIb0lKrBteW06AqYqh2s20yQynmVEo/exec'; 
@@ -75,7 +75,8 @@ export const testScriptConnection = async (url: string): Promise<{success: boole
 export const syncToGoogleSheets = async (
   scriptUrl: string, 
   reports: Report[], 
-  pending: PendingItem[]
+  pending: PendingItem[],
+  qualityReports: QualityReport[]
 ): Promise<SyncResponse> => {
   if (!scriptUrl) return { success: false, message: "URL ausente." };
   try {
@@ -129,6 +130,34 @@ export const syncToGoogleSheets = async (
           turma_resolucao: sanitize(p.resolvedByTurma || '-'),
           data: `${fmt.date} ${fmt.time}`,
           data_resolucao: fmtRes ? `${fmtRes.date} ${fmtRes.time}` : '-'
+        };
+      }),
+      qualityReports: (qualityReports || []).map(qr => {
+        const fmt = formatForSheet(qr.timestamp);
+        return {
+          id: qr.id,
+          data: fmt.date,
+          hora: fmt.time,
+          operador: sanitize(qr.operator),
+          turma: qr.turma,
+          turno: qr.turno,
+          ply: sanitize(qr.ply),
+          dfp2_c_cr: qr.dfp2_c_cr,
+          dfp2_c_yield: qr.dfp2_c_yield,
+          dfp2_c_reject_ash: qr.dfp2_c_reject_ash,
+          dfp2_c_conc_ash: qr.dfp2_c_conc_ash,
+          dfp2_d_cr: qr.dfp2_d_cr,
+          dfp2_d_yield: qr.dfp2_d_yield,
+          dfp2_d_reject_ash: qr.dfp2_d_reject_ash,
+          dfp2_d_conc_ash: qr.dfp2_d_conc_ash,
+          colunas_d_cr: qr.colunas_d_cr,
+          colunas_d_yield: qr.colunas_d_yield,
+          colunas_d_reject_ash: qr.colunas_d_reject_ash,
+          colunas_d_conc_ash: qr.colunas_d_conc_ash,
+          humidade_fundo: qr.humidade_fundo,
+          humidade_oversize: qr.humidade_oversize,
+          humidade_concentrado: qr.humidade_concentrado,
+          obs: sanitize(qr.generalObservations)
         };
       })
     };
@@ -217,4 +246,46 @@ export const fetchCloudData = async (scriptUrl: string): Promise<CloudStats | nu
     if (!response || !response.ok) return null;
     return await response.json();
   } catch (error) { return null; }
+};
+
+export const fetchCloudQualityReports = async (scriptUrl: string): Promise<QualityReport[]> => {
+  if (!scriptUrl) return [];
+  try {
+    const response = await fetch(`${scriptUrl}?action=getQualityReports&t=${Date.now()}`);
+    if (!response.ok) return [];
+    const data = await response.json();
+    if (!Array.isArray(data)) return [];
+
+    return data.map((qr: any): QualityReport => {
+      const dateRaw = qr.data || '';
+      const hourRaw = qr.hora || '12:00';
+      const sheetTimestamp = parseDateFromCloud(`${dateRaw} ${hourRaw}`);
+
+      return {
+        id: qr.id || `qr-${Date.now()}-${Math.random()}`,
+        timestamp: sheetTimestamp || Date.now(),
+        operator: sanitize(qr.operador),
+        turma: (qr.turma || 'A') as any,
+        turno: (qr.turno || 'MANHÃ') as any,
+        ply: sanitize(qr.ply),
+        dfp2_c_cr: qr.dfp2_c_cr || 0,
+        dfp2_c_yield: qr.dfp2_c_yield || 0,
+        dfp2_c_reject_ash: qr.dfp2_c_reject_ash || 0,
+        dfp2_c_conc_ash: qr.dfp2_c_conc_ash || 0,
+        dfp2_d_cr: qr.dfp2_d_cr || 0,
+        dfp2_d_yield: qr.dfp2_d_yield || 0,
+        dfp2_d_reject_ash: qr.dfp2_d_reject_ash || 0,
+        dfp2_d_conc_ash: qr.dfp2_d_conc_ash || 0,
+        colunas_d_cr: qr.colunas_d_cr || 0,
+        colunas_d_yield: qr.colunas_d_yield || 0,
+        colunas_d_reject_ash: qr.colunas_d_reject_ash || 0,
+        colunas_d_conc_ash: qr.colunas_d_conc_ash || 0,
+        humidade_fundo: qr.humidade_fundo || 0,
+        humidade_oversize: qr.humidade_oversize || 0,
+        humidade_concentrado: qr.humidade_concentrado || 0,
+        generalObservations: sanitize(qr.obs),
+        synced: true
+      };
+    });
+  } catch (error) { return []; }
 };

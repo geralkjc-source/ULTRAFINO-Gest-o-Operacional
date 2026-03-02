@@ -42,19 +42,33 @@ const DFPResults: React.FC<DFPResultsProps> = ({ onSaveQualityReport }) => {
     operator: '',
     ply: '',
     timestamp: new Date().toISOString().split('T')[0],
-    dfp2C: { cr: '', yield: '', rejectAsh: '', concAsh: '' },
-    dfp2D: { cr: '', yield: '', rejectAsh: '', concAsh: '' },
-    colunaD: { productAsh: '', yield: '', cr: '', tailAsh: '' },
-    humidade: { tm: '' }
+    turno: detectedScale.turno,
+    dfp2_c_cr: '',
+    dfp2_c_yield: '',
+    dfp2_c_reject_ash: '',
+    dfp2_c_conc_ash: '',
+    dfp2_d_cr: '',
+    dfp2_d_yield: '',
+    dfp2_d_reject_ash: '',
+    dfp2_d_conc_ash: '',
+    colunas_d_cr: '',
+    colunas_d_yield: '',
+    colunas_d_reject_ash: '',
+    colunas_d_conc_ash: '',
+    humidade_fundo: '',
+    humidade_oversize: '',
+    humidade_concentrado: '',
+    generalObservations: ''
   });
 
   // ================= VALIDATION LOGIC =================
   const verificarDFP2 = (d: any) => {
+    console.log('verificarDFP2 d:', d);
     let alertas = [];
-    const cr = parseFloat(d.cr);
-    const yld = parseFloat(d.yield);
-    const ra = parseFloat(d.rejectAsh);
-    const ca = parseFloat(d.concAsh);
+    const cr = parseFloat(d.cr || '0');
+    const yld = parseFloat(d.yield || '0');
+    const ra = parseFloat(d.rejectAsh || '0');
+    const ca = parseFloat(d.concAsh || '0');
 
     if (cr < 40) alertas.push("🔴 CR baixo");
     if (yld < 35) alertas.push("🔴 Yield baixo");
@@ -66,10 +80,10 @@ const DFPResults: React.FC<DFPResultsProps> = ({ onSaveQualityReport }) => {
 
   const verificarColunaC = (d: any) => {
     let alertas = [];
-    const pa = parseFloat(d.productAsh);
-    const yld = parseFloat(d.yield);
-    const cr = parseFloat(d.cr);
-    const ta = parseFloat(d.tailAsh);
+    const pa = parseFloat(d.productAsh || '0');
+    const yld = parseFloat(d.yield || '0');
+    const cr = parseFloat(d.cr || '0');
+    const ta = parseFloat(d.tailAsh || '0');
 
     if (pa > 11) alertas.push("🔴 Produto fora de especificação");
     if (yld < 55) alertas.push("🔴 Yield baixo");
@@ -80,11 +94,12 @@ const DFPResults: React.FC<DFPResultsProps> = ({ onSaveQualityReport }) => {
   };
 
   const verificarColunaD = (d: any) => {
+    console.log('verificarColunaD d:', d);
     let alertas = [];
-    const pa = parseFloat(d.productAsh);
-    const yld = parseFloat(d.yield);
-    const cr = parseFloat(d.cr);
-    const ta = parseFloat(d.tailAsh);
+    const pa = parseFloat(d.productAsh || '0');
+    const yld = parseFloat(d.yield || '0');
+    const cr = parseFloat(d.cr || '0');
+    const ta = parseFloat(d.tailAsh || '0');
 
     if (pa > 11) alertas.push("🔴 Produto fora de especificação");
     if (yld < 55) alertas.push("🔴 Yield baixo");
@@ -94,8 +109,8 @@ const DFPResults: React.FC<DFPResultsProps> = ({ onSaveQualityReport }) => {
     return alertas.length ? alertas : ["🟢 Coluna D Normal"];
   };
 
-  const verificarHumidade = (tmStr: string) => {
-    const TM = parseFloat(tmStr);
+  const verificarHumidade = (tmStr: string | number) => {
+    const TM = parseFloat(tmStr as string || '0');
     if (isNaN(TM)) return [];
 
     if (TM > 14.0) return ["🔴 Humidade muito alta"];
@@ -105,21 +120,11 @@ const DFPResults: React.FC<DFPResultsProps> = ({ onSaveQualityReport }) => {
     return ["🟢 Humidade Normal"];
   };
 
-  const handleInputChange = (section: string, field: string, value: string) => {
-    if (section === 'root') {
-      setFormData(prev => ({ ...prev, [field]: value }));
-      if (field === 'operator') {
-        setSearchTerm(value);
-        setShowSuggestions(value.length > 1);
-      }
-    } else {
-      setFormData(prev => ({
-        ...prev,
-        [section]: {
-          ...(prev as any)[section],
-          [field]: value
-        }
-      }));
+  const handleInputChange = (field: string, value: string) => {
+    setFormData(prev => ({ ...prev, [field]: value }));
+    if (field === 'operator') {
+      setSearchTerm(value);
+      setShowSuggestions(value.length > 1);
     }
   };
 
@@ -176,28 +181,30 @@ const DFPResults: React.FC<DFPResultsProps> = ({ onSaveQualityReport }) => {
     const body = [
       // DFP2 C
       [{ content: 'DFP 2 - PLANTA C', colSpan: 3, styles: { fillColor: [241, 245, 249], fontStyle: 'bold', halign: 'center', textColor: [30, 41, 59] } }],
-      ['CR (%)', formData.dfp2C.cr, verificarDFP2(formData.dfp2C).join(' | ')],
-      ['Yield (%)', formData.dfp2C.yield, ''],
-      ['Reject Ash (%)', formData.dfp2C.rejectAsh, ''],
-      ['Conc Ash (%)', formData.dfp2C.concAsh, ''],
+      ['CR (%)', formData.dfp2_c_cr, verificarDFP2({cr: formData.dfp2_c_cr, yield: formData.dfp2_c_yield, rejectAsh: formData.dfp2_c_reject_ash, concAsh: formData.dfp2_c_conc_ash}).join(' | ')],
+      ['Yield (%)', formData.dfp2_c_yield, ''],
+      ['Reject Ash (%)', formData.dfp2_c_reject_ash, ''],
+      ['Conc Ash (%)', formData.dfp2_c_conc_ash, ''],
       
       // DFP2 D
       [{ content: 'DFP 2 - PLANTA D', colSpan: 3, styles: { fillColor: [241, 245, 249], fontStyle: 'bold', halign: 'center', textColor: [30, 41, 59] } }],
-      ['CR (%)', formData.dfp2D.cr, verificarDFP2(formData.dfp2D).join(' | ')],
-      ['Yield (%)', formData.dfp2D.yield, ''],
-      ['Reject Ash (%)', formData.dfp2D.rejectAsh, ''],
-      ['Conc Ash (%)', formData.dfp2D.concAsh, ''],
+      ['CR (%)', formData.dfp2_d_cr, verificarDFP2({cr: formData.dfp2_d_cr, yield: formData.dfp2_d_yield, rejectAsh: formData.dfp2_d_reject_ash, concAsh: formData.dfp2_d_conc_ash}).join(' | ')],
+      ['Yield (%)', formData.dfp2_d_yield, ''],
+      ['Reject Ash (%)', formData.dfp2_d_reject_ash, ''],
+      ['Conc Ash (%)', formData.dfp2_d_conc_ash, ''],
 
       // COLUNA D
       [{ content: 'COLUNAS D', colSpan: 3, styles: { fillColor: [241, 245, 249], fontStyle: 'bold', halign: 'center', textColor: [30, 41, 59] } }],
-      ['Product Ash (%)', formData.colunaD.productAsh, verificarColunaD(formData.colunaD).join(' | ')],
-      ['Yield (%)', formData.colunaD.yield, ''],
-      ['CR (%)', formData.colunaD.cr, ''],
-      ['Tail Ash (%)', formData.colunaD.tailAsh, ''],
+      ['Product Ash (%)', formData.colunas_d_conc_ash, verificarColunaD({productAsh: formData.colunas_d_conc_ash, yield: formData.colunas_d_yield, cr: formData.colunas_d_cr, tailAsh: formData.colunas_d_reject_ash}).join(' | ')],
+      ['Yield (%)', formData.colunas_d_yield, ''],
+      ['CR (%)', formData.colunas_d_cr, ''],
+      ['Tail Ash (%)', formData.colunas_d_reject_ash, ''],
 
       // HUMIDADE
       [{ content: 'HUMIDADE', colSpan: 3, styles: { fillColor: [241, 245, 249], fontStyle: 'bold', halign: 'center', textColor: [30, 41, 59] } }],
-      ['TM (%)', formData.humidade.tm, verificarHumidade(formData.humidade.tm).join(' | ')],
+      ['Humidade Fundo (%)', formData.humidade_fundo, verificarHumidade(formData.humidade_fundo).join(' | ')],
+      ['Humidade Oversize (%)', formData.humidade_oversize, verificarHumidade(formData.humidade_oversize).join(' | ')],
+      ['Humidade Concentrado (%)', formData.humidade_concentrado, verificarHumidade(formData.humidade_concentrado).join(' | ')],
     ];
 
     autoTable(doc, {
@@ -225,11 +232,24 @@ const DFPResults: React.FC<DFPResultsProps> = ({ onSaveQualityReport }) => {
       timestamp: Date.now(),
       operator: formData.operator,
       turma: detectedScale.turma,
+      turno: detectedScale.turno,
       ply: formData.ply,
-      dfp2C: formData.dfp2C,
-      dfp2D: formData.dfp2D,
-      colunaD: formData.colunaD,
-      humidade: formData.humidade
+      dfp2_c_cr: parseFloat(formData.dfp2_c_cr || '0'),
+      dfp2_c_yield: parseFloat(formData.dfp2_c_yield || '0'),
+      dfp2_c_reject_ash: parseFloat(formData.dfp2_c_reject_ash || '0'),
+      dfp2_c_conc_ash: parseFloat(formData.dfp2_c_conc_ash || '0'),
+      dfp2_d_cr: parseFloat(formData.dfp2_d_cr || '0'),
+      dfp2_d_yield: parseFloat(formData.dfp2_d_yield || '0'),
+      dfp2_d_reject_ash: parseFloat(formData.dfp2_d_reject_ash || '0'),
+      dfp2_d_conc_ash: parseFloat(formData.dfp2_d_conc_ash || '0'),
+      colunas_d_cr: parseFloat(formData.colunas_d_cr || '0'),
+      colunas_d_yield: parseFloat(formData.colunas_d_yield || '0'),
+      colunas_d_reject_ash: parseFloat(formData.colunas_d_reject_ash || '0'),
+      colunas_d_conc_ash: parseFloat(formData.colunas_d_conc_ash || '0'),
+      humidade_fundo: parseFloat(formData.humidade_fundo || '0'),
+      humidade_oversize: parseFloat(formData.humidade_oversize || '0'),
+      humidade_concentrado: parseFloat(formData.humidade_concentrado || '0'),
+      generalObservations: formData.generalObservations
     };
 
     onSaveQualityReport(newReport);
@@ -264,7 +284,7 @@ const DFPResults: React.FC<DFPResultsProps> = ({ onSaveQualityReport }) => {
               <Activity size={16} className="text-blue-500" /> DFP2 - PLANTA C
             </h2>
             <div className="flex flex-wrap gap-2 justify-end">
-              {verificarDFP2(formData.dfp2C).map((a, i) => (
+              {verificarDFP2({cr: formData.dfp2_c_cr, yield: formData.dfp2_c_yield, rejectAsh: formData.dfp2_c_reject_ash, concAsh: formData.dfp2_c_conc_ash}).map((a, i) => (
                 <span key={i} className="text-[9px] font-black px-2 py-1 rounded-full bg-slate-100 text-slate-600 uppercase tracking-tighter">
                   {a}
                 </span>
@@ -283,8 +303,8 @@ const DFPResults: React.FC<DFPResultsProps> = ({ onSaveQualityReport }) => {
                 <label className="text-[9px] font-black text-slate-400 uppercase ml-2">{item.label}</label>
                 <input 
                   type="number" step="0.01" 
-                  value={(formData.dfp2C as any)[item.field]} 
-                  onChange={(e) => handleInputChange('dfp2C', item.field, e.target.value)}
+                  value={(formData as any)[`dfp2_c_${item.field}`]} 
+                  onChange={(e) => handleInputChange(`dfp2_c_${item.field}`, e.target.value)}
                   className="w-full px-4 py-3 bg-slate-50 border-2 border-slate-100 rounded-xl outline-none font-black text-sm focus:border-blue-500 focus:bg-white transition-all shadow-inner"
                   placeholder="0.00"
                 />
@@ -300,7 +320,7 @@ const DFPResults: React.FC<DFPResultsProps> = ({ onSaveQualityReport }) => {
               <Activity size={16} className="text-blue-600" /> DFP2 - PLANTA D
             </h2>
             <div className="flex flex-wrap gap-2 justify-end">
-              {verificarDFP2(formData.dfp2D).map((a, i) => (
+              {verificarDFP2({cr: formData.dfp2_d_cr, yield: formData.dfp2_d_yield, rejectAsh: formData.dfp2_d_reject_ash, concAsh: formData.dfp2_d_conc_ash}).map((a, i) => (
                 <span key={i} className="text-[9px] font-black px-2 py-1 rounded-full bg-slate-100 text-slate-600 uppercase tracking-tighter">
                   {a}
                 </span>
@@ -319,8 +339,8 @@ const DFPResults: React.FC<DFPResultsProps> = ({ onSaveQualityReport }) => {
                 <label className="text-[9px] font-black text-slate-400 uppercase ml-2">{item.label}</label>
                 <input 
                   type="number" step="0.01" 
-                  value={(formData.dfp2D as any)[item.field]} 
-                  onChange={(e) => handleInputChange('dfp2D', item.field, e.target.value)}
+                  value={(formData as any)[`dfp2_d_${item.field}`]} 
+                  onChange={(e) => handleInputChange(`dfp2_d_${item.field}`, e.target.value)}
                   className="w-full px-4 py-3 bg-slate-50 border-2 border-slate-100 rounded-xl outline-none font-black text-sm focus:border-blue-600 focus:bg-white transition-all shadow-inner"
                   placeholder="0.00"
                 />
@@ -336,7 +356,7 @@ const DFPResults: React.FC<DFPResultsProps> = ({ onSaveQualityReport }) => {
               <Columns size={16} className="text-indigo-500" /> COLUNAS D
             </h2>
             <div className="flex flex-wrap gap-2 justify-end">
-              {verificarColunaD(formData.colunaD).map((a, i) => (
+              {verificarColunaD({productAsh: formData.colunas_d_conc_ash, yield: formData.colunas_d_yield, cr: formData.colunas_d_cr, tailAsh: formData.colunas_d_reject_ash}).map((a, i) => (
                 <span key={i} className="text-[9px] font-black px-2 py-1 rounded-full bg-slate-100 text-slate-600 uppercase tracking-tighter">
                   {a}
                 </span>
@@ -355,8 +375,8 @@ const DFPResults: React.FC<DFPResultsProps> = ({ onSaveQualityReport }) => {
                 <label className="text-[9px] font-black text-slate-400 uppercase ml-2">{item.label}</label>
                 <input 
                   type="number" step="0.01" 
-                  value={(formData.colunaD as any)[item.field]} 
-                  onChange={(e) => handleInputChange('colunaD', item.field, e.target.value)}
+                  value={(formData as any)[`colunas_d_${item.field}`]} 
+                  onChange={(e) => handleInputChange(`colunas_d_${item.field}`, e.target.value)}
                   className="w-full px-4 py-3 bg-slate-50 border-2 border-slate-100 rounded-xl outline-none font-black text-sm focus:border-indigo-500 focus:bg-white transition-all shadow-inner"
                   placeholder="0.00"
                 />
@@ -372,7 +392,7 @@ const DFPResults: React.FC<DFPResultsProps> = ({ onSaveQualityReport }) => {
               <Droplets size={16} className="text-cyan-500" /> HUMIDADE E PLY
             </h2>
             <div className="flex flex-wrap gap-2 justify-end">
-              {verificarHumidade(formData.humidade.tm).map((a, i) => (
+              {verificarHumidade(formData.humidade_fundo).map((a, i) => (
                 <span key={i} className="text-[9px] font-black px-2 py-1 rounded-full bg-slate-100 text-slate-600 uppercase tracking-tighter">
                   {a}
                 </span>
@@ -385,8 +405,8 @@ const DFPResults: React.FC<DFPResultsProps> = ({ onSaveQualityReport }) => {
               <label className="text-[9px] font-black text-slate-400 uppercase ml-2">TM (%)</label>
               <input 
                 type="number" step="0.01" 
-                value={formData.humidade.tm} 
-                onChange={(e) => handleInputChange('humidade', 'tm', e.target.value)}
+                value={formData.humidade_fundo} 
+                onChange={(e) => handleInputChange('humidade_fundo', e.target.value)}
                 className="w-full px-4 py-3 bg-slate-50 border-2 border-slate-100 rounded-xl outline-none font-black text-sm focus:border-cyan-500 focus:bg-white transition-all shadow-inner"
                 placeholder="0.00"
               />
@@ -396,7 +416,7 @@ const DFPResults: React.FC<DFPResultsProps> = ({ onSaveQualityReport }) => {
               <input 
                 type="text" 
                 value={formData.ply} 
-                onChange={(e) => handleInputChange('root', 'ply', e.target.value)}
+                onChange={(e) => handleInputChange('ply', e.target.value)}
                 placeholder="EX: BTA1" 
                 className="w-full px-4 py-3 bg-slate-50 border-2 border-slate-100 rounded-xl outline-none font-black text-sm focus:border-cyan-500 focus:bg-white transition-all shadow-inner" 
                 required 
@@ -413,7 +433,7 @@ const DFPResults: React.FC<DFPResultsProps> = ({ onSaveQualityReport }) => {
               <input 
                 type="text" 
                 value={formData.operator} 
-                onChange={(e) => handleInputChange('root', 'operator', e.target.value)}
+                onChange={(e) => handleInputChange('operator', e.target.value)}
                 placeholder="NOME DO OPERADOR" 
                 className="w-full px-6 py-4 bg-slate-50 border-2 border-slate-100 rounded-2xl outline-none font-black uppercase text-sm focus:border-blue-500 focus:bg-white transition-all shadow-inner" 
                 required 
@@ -433,7 +453,7 @@ const DFPResults: React.FC<DFPResultsProps> = ({ onSaveQualityReport }) => {
             <input 
               type="date" 
               value={formData.timestamp} 
-              onChange={(e) => handleInputChange('root', 'timestamp', e.target.value)}
+              onChange={(e) => handleInputChange('timestamp', e.target.value)}
               className="w-full px-6 py-4 bg-slate-50 border-2 border-slate-100 rounded-2xl outline-none font-black uppercase text-sm focus:border-blue-500 focus:bg-white transition-all shadow-inner" 
               required 
             />

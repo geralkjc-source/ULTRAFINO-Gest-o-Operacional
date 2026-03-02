@@ -27,7 +27,7 @@ import OperationalForms from './pages/OperationalForms';
 import DFPResults from './pages/DFPResults';
 import ManualPendingForm from './pages/ManualPendingForm';
 import { Area, Report, PendingItem, Turma, QualityReport } from './types';
-import { syncToGoogleSheets, fetchCloudItems, fetchCloudReports, fetchCloudData, CloudStats, DEFAULT_SCRIPT_URL } from './services/googleSync';
+import { syncToGoogleSheets, fetchCloudItems, fetchCloudReports, fetchCloudQualityReports, fetchCloudData, CloudStats, DEFAULT_SCRIPT_URL } from './services/googleSync';
 
 const VulcanLogo = ({ className = "" }: { className?: string }) => (
   <span className={`font-black tracking-tighter select-none ${className}`}>VULCAN</span>
@@ -167,7 +167,7 @@ const App: React.FC = () => {
    * Omni-Sync Function
    * Sincroniza dados locais com a nuvem e busca novidades.
    */
-  const refreshDataFromCloud = useCallback(async (manualReports?: Report[], manualPending?: PendingItem[]) => {
+  const refreshDataFromCloud = useCallback(async (manualReports?: Report[], manualPending?: PendingItem[], manualQualityReports?: QualityReport[]) => {
     const scriptUrl = localStorage.getItem('google_apps_script_url') || DEFAULT_SCRIPT_URL;
     if (!scriptUrl) return;
 
@@ -175,19 +175,23 @@ const App: React.FC = () => {
     try {
       const reportsToSync = manualReports || reports;
       const pendingToSync = manualPending || pendingItems;
+      const qualityReportsToSync = manualQualityReports || qualityReports;
 
       const unsyncedReports = reportsToSync.filter(r => !r.synced);
       const unsyncedPending = pendingToSync.filter(p => !p.synced);
+      const unsyncedQualityReports = qualityReportsToSync.filter(qr => !qr.synced);
 
       // Envia o que está pendente localmente
-      if (unsyncedReports.length > 0 || unsyncedPending.length > 0) {
-        await syncToGoogleSheets(scriptUrl, unsyncedReports, unsyncedPending);
+      if (unsyncedReports.length > 0 || unsyncedPending.length > 0 || unsyncedQualityReports.length > 0) {
+        await syncToGoogleSheets(scriptUrl, unsyncedReports, unsyncedPending, unsyncedQualityReports);
       }
 
       // Busca dados atualizados da planilha (Garante hora correta)
-      const [cloudPending, cloudReports, stats] = await Promise.all([
+      const [cloudPending, cloudReports, cloudQualityReports, stats] = await Promise.all([
+
         fetchCloudItems(scriptUrl),
         fetchCloudReports(scriptUrl),
+        fetchCloudQualityReports(scriptUrl),
         fetchCloudData(scriptUrl)
       ]);
       
@@ -206,14 +210,23 @@ const App: React.FC = () => {
         if (!lp.synced || !pendingMap.has(lp.id)) pendingMap.set(lp.id, { ...lp, synced: true });
       });
 
+      const qualityReportsMap = new Map<string, QualityReport>();
+      cloudQualityReports.forEach(qr => qualityReportsMap.set(qr.id, qr));
+      qualityReportsToSync.forEach(lqr => {
+        if (!lqr.synced || !qualityReportsMap.has(lqr.id)) qualityReportsMap.set(lqr.id, { ...lqr, synced: true });
+      });
+
       const finalReports = Array.from(reportsMap.values());
       const finalPending = Array.from(pendingMap.values());
+      const finalQualityReports = Array.from(qualityReportsMap.values());
 
       setReports(finalReports);
       setPendingItems(finalPending);
+      setQualityReports(finalQualityReports);
       
       localStorage.setItem('ultrafino_reports', JSON.stringify(finalReports));
       localStorage.setItem('ultrafino_pending', JSON.stringify(finalPending));
+      localStorage.setItem('ultrafino_quality', JSON.stringify(finalQualityReports));
       setLastSyncSource('cloud');
     } catch (error) {
       console.error("Sync Error", error);
@@ -248,6 +261,11 @@ const App: React.FC = () => {
                           labelLower.includes('valvula de diluicao');
 
       if ((item.status === 'fail' || item.status === 'warning') && !isAuxiliary) {
+        // Não gera pendência para 'ALIMENTANDO COLUNAS?' se o status for 'fail' (NÃO)
+        if (item.label === 'ALIMENTANDO COLUNAS?' && item.status === 'fail') {
+          return;
+        }
+
         const finalTag = (isSubItem && lastParentTag) 
           ? `${label.replace('-', '').trim()} ${lastParentTag}`.toUpperCase()
           : label.toUpperCase();
@@ -303,19 +321,23 @@ const App: React.FC = () => {
   };
 
   const addQualityReport = (report: QualityReport) => {
-    const updated = [report, ...qualityReports];
+    const newReport = { ...report, synced: false };
+    const updated = [newReport, ...qualityReports];
     setQualityReports(updated);
     localStorage.setItem('ultrafino_quality', JSON.stringify(updated));
-    // For now, quality reports are local only or we could sync them too if needed
+    refreshDataFromCloud(reports, pendingItems, updated);
   };
 
-  const onSyncSuccess = (syncedReportIds: string[], syncedPendingIds: string[]) => {
+  const onSyncSuccess = (syncedReportIds: string[], syncedPendingIds: string[], syncedQualityReportIds: string[]) => {
     const updatedReports = reports.map(r => syncedReportIds.includes(r.id) ? { ...r, synced: true } : r);
     const updatedPending = pendingItems.map(p => syncedPendingIds.includes(p.id) ? { ...p, synced: true } : p);
+    const updatedQualityReports = qualityReports.map(qr => syncedQualityReportIds.includes(qr.id) ? { ...qr, synced: true } : qr);
     setReports(updatedReports);
     setPendingItems(updatedPending);
+    setQualityReports(updatedQualityReports);
     localStorage.setItem('ultrafino_reports', JSON.stringify(updatedReports));
     localStorage.setItem('ultrafino_pending', JSON.stringify(updatedPending));
+    localStorage.setItem('ultrafino_quality', JSON.stringify(updatedQualityReports));
   };
 
   return (

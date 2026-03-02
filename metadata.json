@@ -1,6 +1,6 @@
 {
-  "name": "Plataforma Ultrafino Usina 2",
-  "description": "Sistema de gestão de checklists e pendências industriais com integração WhatsApp e análise IA.",
+  "name": "Semáforo de Qualidade",
+  "description": "Aplicação para exibir o status de produção e qualidade em tempo real, com armazenamento de histórico na nuvem e uma página dedicada para registros históricos.",
   "requestFramePermissions": [
     "camera"
   ]
