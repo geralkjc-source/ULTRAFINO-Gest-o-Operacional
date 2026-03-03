@@ -377,7 +377,7 @@ const ChecklistArea: React.FC<ChecklistAreaProps> = ({ onSaveReport }) => {
                   type="text" 
                   required 
                   placeholder="DIGITE SEU NOME..." 
-                  value={operator} 
+                  value={operator || ''} 
                   onChange={handleOperatorChange} 
                   className="w-full px-6 py-4 bg-slate-50 border-2 border-slate-100 rounded-2xl outline-none font-black uppercase text-sm focus:border-blue-500 focus:bg-white transition-all shadow-inner" 
                   autoComplete="off"
@@ -399,7 +399,7 @@ const ChecklistArea: React.FC<ChecklistAreaProps> = ({ onSaveReport }) => {
                   type="text" 
                   required 
                   placeholder="MATRÍCULA..." 
-                  value={matricula} 
+                  value={matricula || ''} 
                   onChange={handleMatriculaChange} 
                   className="w-full px-6 py-4 bg-slate-50 border-2 border-slate-100 rounded-2xl outline-none font-black uppercase text-sm focus:border-blue-500 focus:bg-white transition-all shadow-inner" 
                   autoComplete="off"

@@ -84,7 +84,7 @@ const PerformanceHistory: React.FC<PerformanceHistoryProps> = ({ operationalEven
       event.collaboratorName,
       event.collaboratorMatricula,
       event.type.toUpperCase(),
-      event.type === 'elogio' ? event.praiseReason : event.failureDescription,
+      event.type === 'elogio' ? event.description : event.description,
       event.authorName
     ]);
 
@@ -107,10 +107,10 @@ const PerformanceHistory: React.FC<PerformanceHistoryProps> = ({ operationalEven
       'Data': format(event.timestamp, "dd/MM/yyyy HH:mm"),
       'Colaborador': event.collaboratorName,
       'Matrícula': event.collaboratorMatricula,
-      'Função': event.collaboratorFuncao,
-      'Departamento': event.collaboratorDepartamento,
+      'Função': event.collaboratorRole,
+      'Departamento': event.collaboratorTeam,
       'Tipo': event.type.toUpperCase(),
-      'Descrição/Motivo': event.type === 'elogio' ? event.praiseReason : event.failureDescription,
+      'Descrição/Motivo': event.description,
       'Autor': event.authorName
     }));
 
@@ -248,7 +248,7 @@ const PerformanceHistory: React.FC<PerformanceHistoryProps> = ({ operationalEven
               <input 
                 type="text" 
                 placeholder="BUSCAR COLABORADOR..." 
-                value={searchTerm}
+                value={searchTerm || ''}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 className="w-full pl-12 pr-4 py-3 bg-slate-800 border border-slate-700 rounded-xl outline-none font-black uppercase text-[10px] focus:border-blue-500 transition-all"
               />
@@ -302,7 +302,7 @@ const PerformanceHistory: React.FC<PerformanceHistoryProps> = ({ operationalEven
                     <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
                       <div className="flex items-center gap-1.5 text-slate-500">
                         <User size={12} />
-                        <span className="text-[10px] font-bold uppercase">{event.collaboratorFuncao} | {event.collaboratorDepartamento}</span>
+                        <span className="text-[10px] font-bold uppercase">{event.collaboratorRole} | {event.collaboratorTeam}</span>
                       </div>
                       <div className="flex items-center gap-1.5 text-slate-500">
                         <Calendar size={12} />
@@ -312,7 +312,7 @@ const PerformanceHistory: React.FC<PerformanceHistoryProps> = ({ operationalEven
                       </div>
                     </div>
                     <p className="text-xs text-slate-600 font-medium mt-2 line-clamp-2 uppercase">
-                      {event.type === 'elogio' ? event.praiseReason : event.failureDescription}
+                      {event.description}
                     </p>
                   </div>
                 </div>

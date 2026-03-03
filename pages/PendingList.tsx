@@ -111,7 +111,7 @@ const PendingList: React.FC<PendingListProps> = ({ pendingItems = [], onResolve,
               </p>
             </div>
             <div className="space-y-4">
-              <input type="text" placeholder="SEU NOME..." value={resolverName} onChange={(e) => setResolverName(e.target.value)} className="w-full p-5 bg-slate-50 border-2 border-slate-100 rounded-2xl font-black text-center uppercase outline-none focus:border-emerald-500 transition-all shadow-inner" />
+              <input type="text" placeholder="SEU NOME..." value={resolverName || ''} onChange={(e) => setResolverName(e.target.value)} className="w-full p-5 bg-slate-50 border-2 border-slate-100 rounded-2xl font-black text-center uppercase outline-none focus:border-emerald-500 transition-all shadow-inner" />
             </div>
             <div className="flex gap-3">
               <button onClick={() => setResolvingId(null)} className="flex-1 py-5 border-2 border-slate-100 rounded-2xl font-black uppercase text-slate-400 text-[10px] tracking-widest">Cancelar</button>
@@ -148,7 +148,7 @@ const PendingList: React.FC<PendingListProps> = ({ pendingItems = [], onResolve,
       <div className="bg-white p-6 rounded-[2rem] border-2 border-slate-100 shadow-sm space-y-4">
         <div className="relative w-full">
           <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
-          <input type="text" placeholder="BUSCAR TAG OU DESCRIÇÃO..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-full pl-12 pr-4 py-4 bg-slate-50 border-2 border-slate-100 rounded-2xl outline-none text-sm font-black uppercase focus:bg-white focus:border-blue-500 transition-all shadow-inner" />
+          <input type="text" placeholder="BUSCAR TAG OU DESCRIÇÃO..." value={searchTerm || ''} onChange={(e) => setSearchTerm(e.target.value)} className="w-full pl-12 pr-4 py-4 bg-slate-50 border-2 border-slate-100 rounded-2xl outline-none text-sm font-black uppercase focus:bg-white focus:border-blue-500 transition-all shadow-inner" />
         </div>
         <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
           <select value={areaFilter} onChange={(e) => setAreaFilter(e.target.value)} className="bg-slate-50 border-2 border-slate-100 rounded-xl px-3 py-3 text-[9px] font-black uppercase outline-none">

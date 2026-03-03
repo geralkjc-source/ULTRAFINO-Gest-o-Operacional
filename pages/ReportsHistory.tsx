@@ -186,7 +186,7 @@ const ReportsHistory: React.FC<ReportsHistoryProps> = ({ reports = [], pendingIt
               <input 
                 type="text"
                 placeholder="BUSCAR OPERADOR OU ÁREA..."
-                value={searchTerm}
+                value={searchTerm || ''}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-lg outline-none text-xs font-bold uppercase"
               />
@@ -195,7 +195,7 @@ const ReportsHistory: React.FC<ReportsHistoryProps> = ({ reports = [], pendingIt
               <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
               <input 
                 type="date"
-                value={dateFilter}
+                value={dateFilter || ''}
                 onChange={(e) => setDateFilter(e.target.value)}
                 className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-lg outline-none text-xs font-bold uppercase cursor-pointer"
               />

@@ -88,7 +88,7 @@ const ManualPendingForm: React.FC<ManualPendingFormProps> = ({ onAddManualPendin
         {/* Identificação */}
         <div className="bg-white p-8 rounded-[2.5rem] border-2 border-slate-100 shadow-sm space-y-6">
           <h2 className="text-[11px] font-black text-slate-900 uppercase tracking-[0.2em] flex items-center gap-2"><UserIcon size={16} className="text-blue-500" /> Identificação</h2>
-          <input type="text" name="operator" placeholder="Seu Nome" value={pendingData.operator} onChange={handlePendingChange} className="w-full px-6 py-4 bg-slate-50 border-2 border-slate-100 rounded-2xl outline-none font-black uppercase text-sm focus:border-blue-500 focus:bg-white transition-all shadow-inner" required />
+          <input type="text" name="operator" placeholder="Seu Nome" value={pendingData.operator || ''} onChange={handlePendingChange} className="w-full px-6 py-4 bg-slate-50 border-2 border-slate-100 rounded-2xl outline-none font-black uppercase text-sm focus:border-blue-500 focus:bg-white transition-all shadow-inner" required />
           
           {/* PAINEL DE ESCALA AUTOMÁTICA */}
           <div className="space-y-3 pt-4">
@@ -129,7 +129,7 @@ const ManualPendingForm: React.FC<ManualPendingFormProps> = ({ onAddManualPendin
 
           <div className="space-y-2">
             <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest block">TAG / Ativo</label>
-            <input type="text" name="tag" placeholder="Ex: 06C-VP-101" value={pendingData.tag} onChange={handlePendingChange} className="w-full px-6 py-4 bg-slate-50 border-2 border-slate-100 rounded-2xl outline-none font-black uppercase text-sm focus:border-blue-500 focus:bg-white transition-all shadow-inner" required />
+            <input type="text" name="tag" placeholder="Ex: 06C-VP-101" value={pendingData.tag || ''} onChange={handlePendingChange} className="w-full px-6 py-4 bg-slate-50 border-2 border-slate-100 rounded-2xl outline-none font-black uppercase text-sm focus:border-blue-500 focus:bg-white transition-all shadow-inner" required />
           </div>
 
           <div className="space-y-2">

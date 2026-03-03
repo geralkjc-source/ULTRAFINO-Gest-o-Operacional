@@ -24,10 +24,12 @@ import SyncDashboard from './pages/SyncDashboard';
 import Analytics from './pages/Analytics';
 import ShiftCalendar from './pages/ShiftCalendar';
 import OperationalForms from './pages/OperationalForms';
+import PerformanceHistory from './pages/PerformanceHistory';
 import DFPResults from './pages/DFPResults';
 import ManualPendingForm from './pages/ManualPendingForm';
-import { Area, Report, PendingItem, Turma, QualityReport } from './types';
-import { syncToGoogleSheets, fetchCloudItems, fetchCloudReports, fetchCloudQualityReports, fetchCloudData, CloudStats, DEFAULT_SCRIPT_URL } from './services/googleSync';
+import { Area, Report, PendingItem, Turma, QualityReport, OperationalEvent } from './types';
+import { syncToGoogleSheets, fetchCloudItems, fetchCloudReports, fetchCloudQualityReports, fetchCloudOperationalEvents, fetchCloudData, CloudStats, DEFAULT_SCRIPT_URL } from './services/googleSync';
+import { backendService } from './services/backendService';
 
 const VulcanLogo = ({ className = "" }: { className?: string }) => (
   <span className={`font-black tracking-tighter select-none ${className}`}>VULCAN</span>
@@ -67,6 +69,7 @@ const Sidebar = ({ isOpen, toggle, unsyncedCount }: { isOpen: boolean; toggle: (
     },
     { path: '/dfp', label: 'Qualidade e Yield', icon: <PieChart size={20} /> },
     { path: '/forms', label: 'Formulários Operacionais', icon: <FileSpreadsheet size={20} /> },
+    { path: '/performance-history', label: 'Histórico de Performance', icon: <Award size={20} /> },
   ];
 
   return (
@@ -116,7 +119,7 @@ const Sidebar = ({ isOpen, toggle, unsyncedCount }: { isOpen: boolean; toggle: (
   );
 };
 
-const Header = ({ onToggleSidebar, unsyncedCount, isSyncing }: { onToggleSidebar: () => void, unsyncedCount: number, isSyncing: boolean }) => (
+const Header = ({ onToggleSidebar, unsyncedCount, isSyncing, onSync }: { onToggleSidebar: () => void, unsyncedCount: number, isSyncing: boolean, onSync: () => void }) => (
   <header className="sticky top-0 z-30 bg-white/80 backdrop-blur-md border-b border-slate-200 px-6 py-4 flex items-center justify-between">
     <div className="flex items-center gap-4">
       <button onClick={onToggleSidebar} className="lg:hidden p-2 text-slate-600 hover:bg-slate-100 rounded-md"><Menu size={24} /></button>
@@ -130,9 +133,18 @@ const Header = ({ onToggleSidebar, unsyncedCount, isSyncing }: { onToggleSidebar
       </div>
     </div>
     <div className="flex items-center gap-4">
-      {unsyncedCount > 0 && (
-        <div className="flex items-center gap-2 bg-amber-50 text-amber-600 px-3 py-1.5 rounded-full border border-amber-100 text-[9px] font-black uppercase tracking-wider animate-bounce">
-          <CloudOff size={14} /> {unsyncedCount} Pendentes
+      {unsyncedCount > 0 ? (
+        <button 
+          onClick={onSync}
+          disabled={isSyncing}
+          className="flex items-center gap-2 bg-amber-50 text-amber-600 px-3 py-1.5 rounded-full border border-amber-100 text-[9px] font-black uppercase tracking-wider hover:bg-amber-100 transition-all shadow-sm"
+        >
+          {isSyncing ? <RefreshCw size={14} className="animate-spin" /> : <CloudOff size={14} />} 
+          {isSyncing ? 'Sincronizando...' : `${unsyncedCount} Pendentes`}
+        </button>
+      ) : (
+        <div className="flex items-center gap-2 bg-emerald-50 text-emerald-600 px-3 py-1.5 rounded-full border border-emerald-100 text-[9px] font-black uppercase tracking-wider">
+          <Cloud size={14} /> Sincronizado
         </div>
       )}
       <div className="w-8 h-8 rounded-full bg-slate-100 border border-slate-200 flex items-center justify-center text-slate-400"><Settings size={18} /></div>
@@ -145,88 +157,169 @@ const App: React.FC = () => {
   const [reports, setReports] = useState<Report[]>([]);
   const [pendingItems, setPendingItems] = useState<PendingItem[]>([]);
   const [qualityReports, setQualityReports] = useState<QualityReport[]>([]);
+  const [operationalEvents, setOperationalEvents] = useState<OperationalEvent[]>([]);
   const [isGlobalSyncing, setIsGlobalSyncing] = useState(false);
   const [cloudStats, setCloudStats] = useState<CloudStats | null>(null);
   const [lastSyncSource, setLastSyncSource] = useState<'local' | 'cloud'>('local');
 
   // Carregamento Inicial
   useEffect(() => {
-    try {
-      const savedReports = localStorage.getItem('ultrafino_reports');
-      const savedPending = localStorage.getItem('ultrafino_pending');
-      const savedQuality = localStorage.getItem('ultrafino_quality');
-      if (savedReports) setReports(JSON.parse(savedReports));
-      if (savedPending) setPendingItems(JSON.parse(savedPending));
-      if (savedQuality) setQualityReports(JSON.parse(savedQuality));
-    } catch (e) { console.error("Initial Load Error", e); }
+    // Migração de URL do Google Script (v3.2)
+    const currentUrl = localStorage.getItem('google_apps_script_url');
+    const previousUrls = [
+      'https://script.google.com/macros/s/AKfycbxtvbBGbkqymcbFIKjKRXfy_GFW7b9pb_FaH6smuAUrosTbs3l02FYe753qx_1Lg19oZA/exec',
+      'https://script.google.com/macros/s/AKfycbyvYthvTERVFx9Vy4M3iVVbQj7vxzX-HaDkrM6M_DhCvddyWZevMr5omoquK5Z8PxnP/exec'
+    ];
+    if (!currentUrl || previousUrls.includes(currentUrl)) {
+      localStorage.setItem('google_apps_script_url', DEFAULT_SCRIPT_URL);
+    }
+
+    const loadInitialData = async () => {
+      try {
+        // Tenta carregar do backend primeiro
+        const [bReports, bPending, bQuality, bOperational] = await Promise.all([
+          backendService.getReports().catch(() => []),
+          backendService.getPendingItems().catch(() => []),
+          backendService.getQualityReports().catch(() => []),
+          backendService.getOperationalEvents().catch(() => [])
+        ]);
+
+        if (bReports.length > 0) setReports(bReports.sort((a, b) => b.timestamp - a.timestamp));
+        else {
+          const savedReports = localStorage.getItem('ultrafino_reports');
+          if (savedReports) setReports(JSON.parse(savedReports).sort((a: any, b: any) => b.timestamp - a.timestamp));
+        }
+
+        if (bPending.length > 0) setPendingItems(bPending.sort((a, b) => b.timestamp - a.timestamp));
+        else {
+          const savedPending = localStorage.getItem('ultrafino_pending');
+          if (savedPending) setPendingItems(JSON.parse(savedPending).sort((a: any, b: any) => b.timestamp - a.timestamp));
+        }
+
+        if (bQuality.length > 0) setQualityReports(bQuality.sort((a, b) => b.timestamp - a.timestamp));
+        else {
+          const savedQuality = localStorage.getItem('ultrafino_quality');
+          if (savedQuality) setQualityReports(JSON.parse(savedQuality).sort((a: any, b: any) => b.timestamp - a.timestamp));
+        }
+
+        if (bOperational.length > 0) setOperationalEvents(bOperational.sort((a, b) => b.timestamp - a.timestamp));
+        else {
+          const savedOperational = localStorage.getItem('ultrafino_operational');
+          if (savedOperational) setOperationalEvents(JSON.parse(savedOperational).sort((a: any, b: any) => b.timestamp - a.timestamp));
+        }
+      } catch (e) {
+        console.error("Initial Load Error", e);
+        // Fallback para localStorage
+        const savedReports = localStorage.getItem('ultrafino_reports');
+        const savedPending = localStorage.getItem('ultrafino_pending');
+        const savedQuality = localStorage.getItem('ultrafino_quality');
+        const savedOperational = localStorage.getItem('ultrafino_operational');
+        if (savedReports) setReports(JSON.parse(savedReports));
+        if (savedPending) setPendingItems(JSON.parse(savedPending));
+        if (savedQuality) setQualityReports(JSON.parse(savedQuality));
+        if (savedOperational) setOperationalEvents(JSON.parse(savedOperational));
+      }
+    };
+    loadInitialData();
   }, []);
 
-  const unsyncedCount = reports.filter(r => !r.synced).length + pendingItems.filter(p => !p.synced).length;
+  const unsyncedCount = reports.filter(r => !r.synced).length + 
+                       pendingItems.filter(p => !p.synced).length + 
+                       qualityReports.filter(qr => !qr.synced).length +
+                       operationalEvents.filter(oe => !oe.synced).length;
 
   /**
    * Omni-Sync Function
    * Sincroniza dados locais com a nuvem e busca novidades.
    */
-  const refreshDataFromCloud = useCallback(async (manualReports?: Report[], manualPending?: PendingItem[], manualQualityReports?: QualityReport[]) => {
-    const scriptUrl = localStorage.getItem('google_apps_script_url') || DEFAULT_SCRIPT_URL;
-    if (!scriptUrl) return;
-
+  const refreshDataFromCloud = useCallback(async (manualReports?: Report[], manualPending?: PendingItem[], manualQualityReports?: QualityReport[], manualOperational?: OperationalEvent[]) => {
     setIsGlobalSyncing(true);
     try {
       const reportsToSync = manualReports || reports;
       const pendingToSync = manualPending || pendingItems;
       const qualityReportsToSync = manualQualityReports || qualityReports;
+      const operationalToSync = manualOperational || operationalEvents;
 
       const unsyncedReports = reportsToSync.filter(r => !r.synced);
       const unsyncedPending = pendingToSync.filter(p => !p.synced);
       const unsyncedQualityReports = qualityReportsToSync.filter(qr => !qr.synced);
+      const unsyncedOperational = operationalToSync.filter(oe => !oe.synced);
 
-      // Envia o que está pendente localmente
-      if (unsyncedReports.length > 0 || unsyncedPending.length > 0 || unsyncedQualityReports.length > 0) {
-        await syncToGoogleSheets(scriptUrl, unsyncedReports, unsyncedPending, unsyncedQualityReports);
+      // 1. Sincroniza com o Backend v3.2 (Express)
+      if (unsyncedReports.length > 0 || unsyncedPending.length > 0 || unsyncedQualityReports.length > 0 || unsyncedOperational.length > 0) {
+        await backendService.sync({
+          reports: unsyncedReports,
+          pending: unsyncedPending,
+          qualityReports: unsyncedQualityReports,
+          operationalEvents: unsyncedOperational,
+          version: "3.2"
+        });
+        
+        // Marca como sincronizado localmente IMEDIATAMENTE após sucesso no backend
+        setReports(prev => prev.map(r => unsyncedReports.some(ur => ur.id === r.id) ? { ...r, synced: true } : r));
+        setPendingItems(prev => prev.map(p => unsyncedPending.some(up => up.id === p.id) ? { ...p, synced: true } : p));
+        setQualityReports(prev => prev.map(qr => unsyncedQualityReports.some(uqr => uqr.id === qr.id) ? { ...qr, synced: true } : qr));
+        setOperationalEvents(prev => prev.map(oe => unsyncedOperational.some(uoe => uoe.id === oe.id) ? { ...oe, synced: true } : oe));
       }
 
-      // Busca dados atualizados da planilha (Garante hora correta)
-      const [cloudPending, cloudReports, cloudQualityReports, stats] = await Promise.all([
-
-        fetchCloudItems(scriptUrl),
-        fetchCloudReports(scriptUrl),
-        fetchCloudQualityReports(scriptUrl),
-        fetchCloudData(scriptUrl)
+      // 2. Busca dados atualizados do Backend
+      const [bReports, bPending, bQuality, bOperational] = await Promise.all([
+        backendService.getReports(),
+        backendService.getPendingItems(),
+        backendService.getQualityReports(),
+        backendService.getOperationalEvents()
       ]);
+
+      // 3. Sincroniza com Google Sheets (Opcional/Legado)
+      const scriptUrl = localStorage.getItem('google_apps_script_url') || DEFAULT_SCRIPT_URL;
+      let cloudReports: Report[] = [];
+      let cloudPending: PendingItem[] = [];
+      let cloudQuality: QualityReport[] = [];
+      let cloudOperational: OperationalEvent[] = [];
       
-      if (stats) setCloudStats(stats);
+      if (scriptUrl) {
+        await syncToGoogleSheets(scriptUrl, unsyncedReports, unsyncedPending, unsyncedQualityReports, unsyncedOperational).catch(() => null);
+        
+        // Busca TODOS os históricos da nuvem
+        const [cReports, cPending, cQuality, cOperational] = await Promise.all([
+          fetchCloudReports(scriptUrl).catch(() => []),
+          fetchCloudItems(scriptUrl).catch(() => []),
+          fetchCloudQualityReports(scriptUrl).catch(() => []),
+          fetchCloudOperationalEvents(scriptUrl).catch(() => [])
+        ]);
+        
+        cloudReports = cReports;
+        cloudPending = cPending;
+        cloudQuality = cQuality;
+        cloudOperational = cOperational;
+      }
 
-      // Mesclagem Blindada: Prioridade para dados da nuvem (Vem com a hora fixa da planilha)
-      const reportsMap = new Map<string, Report>();
-      cloudReports.forEach(r => reportsMap.set(r.id, r));
-      reportsToSync.forEach(lr => {
-        if (!lr.synced || !reportsMap.has(lr.id)) reportsMap.set(lr.id, { ...lr, synced: true });
-      });
+      // Mesclagem e Ordenação
+      const mergeData = <T extends { id: string; timestamp: number }>(local: T[], cloud: T[]) => {
+        const map = new Map<string, T>();
+        [...cloud, ...local].forEach(item => {
+          const existing = map.get(item.id);
+          if (!existing || item.timestamp > existing.timestamp) {
+            map.set(item.id, item);
+          }
+        });
+        return Array.from(map.values());
+      };
 
-      const pendingMap = new Map<string, PendingItem>();
-      cloudPending.forEach(p => pendingMap.set(p.id, p));
-      pendingToSync.forEach(lp => {
-        if (!lp.synced || !pendingMap.has(lp.id)) pendingMap.set(lp.id, { ...lp, synced: true });
-      });
-
-      const qualityReportsMap = new Map<string, QualityReport>();
-      cloudQualityReports.forEach(qr => qualityReportsMap.set(qr.id, qr));
-      qualityReportsToSync.forEach(lqr => {
-        if (!lqr.synced || !qualityReportsMap.has(lqr.id)) qualityReportsMap.set(lqr.id, { ...lqr, synced: true });
-      });
-
-      const finalReports = Array.from(reportsMap.values());
-      const finalPending = Array.from(pendingMap.values());
-      const finalQualityReports = Array.from(qualityReportsMap.values());
+      const finalReports = mergeData(bReports, cloudReports).map(r => ({ ...r, synced: true })).sort((a, b) => b.timestamp - a.timestamp);
+      const finalPending = mergeData(bPending, cloudPending).map(p => ({ ...p, synced: true })).sort((a, b) => b.timestamp - a.timestamp);
+      const finalQuality = mergeData(bQuality, cloudQuality).map(qr => ({ ...qr, synced: true })).sort((a, b) => b.timestamp - a.timestamp);
+      const finalOperational = mergeData(bOperational, cloudOperational).map(oe => ({ ...oe, synced: true })).sort((a, b) => b.timestamp - a.timestamp);
 
       setReports(finalReports);
       setPendingItems(finalPending);
-      setQualityReports(finalQualityReports);
+      setQualityReports(finalQuality);
+      setOperationalEvents(finalOperational);
       
       localStorage.setItem('ultrafino_reports', JSON.stringify(finalReports));
       localStorage.setItem('ultrafino_pending', JSON.stringify(finalPending));
-      localStorage.setItem('ultrafino_quality', JSON.stringify(finalQualityReports));
+      localStorage.setItem('ultrafino_quality', JSON.stringify(finalQuality));
+      localStorage.setItem('ultrafino_operational', JSON.stringify(finalOperational));
       setLastSyncSource('cloud');
     } catch (error) {
       console.error("Sync Error", error);
@@ -234,7 +327,15 @@ const App: React.FC = () => {
     } finally {
       setIsGlobalSyncing(false);
     }
-  }, [reports, pendingItems]);
+  }, [reports, pendingItems, qualityReports, operationalEvents]);
+
+  // Sincronismo Automático a cada 30 segundos
+  useEffect(() => {
+    const interval = setInterval(() => {
+      refreshDataFromCloud();
+    }, 30 * 1000);
+    return () => clearInterval(interval);
+  }, [refreshDataFromCloud]);
 
   // Disparo de Sync ao entrar no App
   useEffect(() => {
@@ -328,16 +429,29 @@ const App: React.FC = () => {
     refreshDataFromCloud(reports, pendingItems, updated);
   };
 
-  const onSyncSuccess = (syncedReportIds: string[], syncedPendingIds: string[], syncedQualityReportIds: string[]) => {
+  const addOperationalEvent = (event: OperationalEvent) => {
+    const newEvent = { ...event, synced: false };
+    const updated = [newEvent, ...operationalEvents];
+    setOperationalEvents(updated);
+    localStorage.setItem('ultrafino_operational', JSON.stringify(updated));
+    refreshDataFromCloud(reports, pendingItems, qualityReports, updated);
+  };
+
+  const onSyncSuccess = (syncedReportIds: string[], syncedPendingIds: string[], syncedQualityReportIds: string[], syncedOperationalIds: string[] = []) => {
     const updatedReports = reports.map(r => syncedReportIds.includes(r.id) ? { ...r, synced: true } : r);
     const updatedPending = pendingItems.map(p => syncedPendingIds.includes(p.id) ? { ...p, synced: true } : p);
     const updatedQualityReports = qualityReports.map(qr => syncedQualityReportIds.includes(qr.id) ? { ...qr, synced: true } : qr);
+    const updatedOperational = operationalEvents.map(oe => syncedOperationalIds.includes(oe.id) ? { ...oe, synced: true } : oe);
+    
     setReports(updatedReports);
     setPendingItems(updatedPending);
     setQualityReports(updatedQualityReports);
+    setOperationalEvents(updatedOperational);
+    
     localStorage.setItem('ultrafino_reports', JSON.stringify(updatedReports));
     localStorage.setItem('ultrafino_pending', JSON.stringify(updatedPending));
     localStorage.setItem('ultrafino_quality', JSON.stringify(updatedQualityReports));
+    localStorage.setItem('ultrafino_operational', JSON.stringify(updatedOperational));
   };
 
   return (
@@ -350,18 +464,45 @@ const App: React.FC = () => {
             onToggleSidebar={() => setIsSidebarOpen(!isSidebarOpen)} 
             unsyncedCount={unsyncedCount} 
             isSyncing={isGlobalSyncing} 
+            onSync={() => refreshDataFromCloud()}
           />
+          
+          {pendingItems.filter(p => p.area === Area.DFP2 && p.status === 'aberto').length > 5 && (
+            <div className="mx-6 mt-6 animate-in slide-in-from-top-4 duration-500">
+              <div className="bg-red-50 border-2 border-red-100 rounded-[2rem] p-6 flex items-center justify-between shadow-sm">
+                <div className="flex items-center gap-4">
+                  <div className="w-12 h-12 bg-red-600 text-white rounded-2xl flex items-center justify-center shadow-lg animate-pulse">
+                    <AlertCircle size={24} />
+                  </div>
+                  <div>
+                    <h3 className="text-red-900 font-black uppercase text-sm tracking-tight">Atenção: Volume de Pendências DFP</h3>
+                    <p className="text-red-600 text-[10px] font-bold uppercase tracking-widest mt-1">
+                      Existem {pendingItems.filter(p => p.area === Area.DFP2 && p.status === 'aberto').length} pendências em aberto na área DFP 2.
+                    </p>
+                  </div>
+                </div>
+                <Link 
+                  to="/pending?area=DFP%202&status=aberto" 
+                  className="bg-red-600 text-white px-6 py-3 rounded-xl font-black uppercase text-[10px] tracking-widest shadow-md hover:bg-red-700 transition-all active:scale-95"
+                >
+                  Verificar Agora
+                </Link>
+              </div>
+            </div>
+          )}
+
           <div className="flex-1 p-6">
             <Routes>
-              <Route path="/" element={<Dashboard reports={reports} pendingItems={pendingItems} qualityReports={qualityReports} onRefreshCloud={() => refreshDataFromCloud()} isRefreshing={isGlobalSyncing} />} />
+              <Route path="/" element={<Dashboard reports={reports} pendingItems={pendingItems} qualityReports={qualityReports} operationalEvents={operationalEvents} onRefreshCloud={() => refreshDataFromCloud()} isRefreshing={isGlobalSyncing} />} />
               <Route path="/calendar" element={<ShiftCalendar />} />
               <Route path="/charts" element={<Analytics reports={reports} pendingItems={pendingItems} cloudStats={cloudStats} onRefresh={() => refreshDataFromCloud()} isRefreshing={isGlobalSyncing} syncSource={lastSyncSource} />} />
               <Route path="/checklist/:areaName" element={<ChecklistArea onSaveReport={addReport} />} />
               <Route path="/pending" element={<PendingList pendingItems={pendingItems} onResolve={resolvePending} onRefresh={() => refreshDataFromCloud()} isRefreshing={isGlobalSyncing} onAddComment={() => {}} />} />
               <Route path="/history" element={<ReportsHistory reports={reports} pendingItems={pendingItems} onAddItemComment={() => {}} />} />
-              <Route path="/sync" element={<SyncDashboard reports={reports} pendingItems={pendingItems} onSyncSuccess={onSyncSuccess} />} />
+              <Route path="/sync" element={<SyncDashboard reports={reports} pendingItems={pendingItems} qualityReports={qualityReports} operationalEvents={operationalEvents} onSyncSuccess={onSyncSuccess} onRefreshCloud={() => refreshDataFromCloud()} />} />
               <Route path="/dfp" element={<DFPResults onSaveQualityReport={addQualityReport} qualityReports={qualityReports} />} />
-              <Route path="/forms" element={<OperationalForms onAddManualPending={addManualPending} />} />
+              <Route path="/forms" element={<OperationalForms onAddManualPending={addManualPending} onSaveOperationalEvent={addOperationalEvent} operationalEvents={operationalEvents} />} />
+              <Route path="/performance-history" element={<PerformanceHistory operationalEvents={operationalEvents} />} />
               <Route path="/manual-pending" element={<ManualPendingForm onAddManualPending={addManualPending} />} />
             </Routes>
           </div>

@@ -1,7 +1,7 @@
 
-import { Report, PendingItem, Area, QualityReport } from '../types';
+import { Report, PendingItem, Area, QualityReport, OperationalEvent } from '../types';
 
-// Endpoint oficial v3.0
+// Endpoint oficial v3.2
 export const DEFAULT_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwPoZk1y0cw4gZtQRMAR9ix0ZvMbgeqZA7fVveIb0lKrBteW06AqYqh2s20yQynmVEo/exec'; 
 export const MASTER_SHEET_URL = 'https://docs.google.com/spreadsheets/d/1HjhTUldjn8Kk9mVF8GMw7ZQoPbqspMhqGV7OM5TPCTY/edit';
 
@@ -60,23 +60,38 @@ const parseDateFromCloud = (dateVal: any): number => {
 
 const sanitize = (str: any) => (str || '').toString().replace(/[\u0000-\u001F\u007F-\u009F]/g, "").trim().toUpperCase();
 
-export const testScriptConnection = async (url: string): Promise<{success: boolean, message: string}> => {
+export const testScriptConnection = async (url: string): Promise<{success: boolean, message: string, details?: string}> => {
   if (!url || !url.startsWith('https://script.google.com')) return { success: false, message: "URL inválida." };
   try {
-    const response = await fetch(`${url}?action=test&t=${Date.now()}`, { method: 'GET', mode: 'cors' }).catch(() => null);
-    if (!response) return { success: true, message: "Handshake Vulcan OK" };
+    // Teste 1: Handshake Simples
+    const response = await fetch(`${url}?action=test&t=${Date.now()}`, { method: 'GET' }).catch(() => null);
+    if (!response) return { success: false, message: "Script Inacessível (CORS/Rede)." };
+    
     const text = await response.text();
-    return text.includes("v2") || text.includes("v3") || text.includes("SUCCESS") || text.includes("Online")
-      ? { success: true, message: "Protocolo Vulcan v3.1 Ativo!" }
-      : { success: false, message: "Script v3.1 Requerido." };
-  } catch (error) { return { success: false, message: "Falha de rede." }; }
+    const isV32 = text.includes("v3.2") || text.includes("v3");
+    
+    // Teste 2: Verificar se as ações de leitura estão respondendo (opcional mas útil)
+    const testAction = await fetch(`${url}?action=getStats&t=${Date.now()}`).catch(() => null);
+    const actionsOk = testAction && testAction.ok;
+
+    if (isV32 && actionsOk) {
+      return { success: true, message: "Protocolo Vulcan v3.2 Totalmente Ativo!" };
+    } else if (isV32) {
+      return { success: true, message: "Script v3.2 Detectado (Ações Limitadas)." };
+    } else {
+      return { success: false, message: "Script v3.2 Requerido.", details: "O script atual parece ser uma versão antiga." };
+    }
+  } catch (error) { 
+    return { success: false, message: "Falha de conexão.", details: "Verifique se o script está publicado como 'Qualquer pessoa'." }; 
+  }
 };
 
 export const syncToGoogleSheets = async (
   scriptUrl: string, 
   reports: Report[], 
   pending: PendingItem[],
-  qualityReports: QualityReport[]
+  qualityReports: QualityReport[],
+  operationalEvents: OperationalEvent[] = []
 ): Promise<SyncResponse> => {
   if (!scriptUrl) return { success: false, message: "URL ausente." };
   try {
@@ -96,7 +111,7 @@ export const syncToGoogleSheets = async (
 
     const payload = {
       action: "sync",
-      version: "3.1_stable_time",
+      version: "3.2_operational",
       mes_referencia: mesRef,
       reports: (reports || []).map(r => {
         const fmt = formatForSheet(r.timestamp);
@@ -159,6 +174,22 @@ export const syncToGoogleSheets = async (
           humidade_concentrado: qr.humidade_concentrado,
           obs: sanitize(qr.generalObservations)
         };
+      }),
+      operationalEvents: (operationalEvents || []).map(oe => {
+        const fmt = formatForSheet(oe.timestamp);
+        return {
+          id: oe.id,
+          data: fmt.date,
+          hora: fmt.time,
+          tipo: oe.type.toUpperCase(),
+          colaborador: sanitize(oe.collaboratorName),
+          matricula: oe.collaboratorMatricula,
+          equipe: sanitize(oe.collaboratorTeam),
+          funcao: sanitize(oe.collaboratorRole),
+          autor: sanitize(oe.authorName),
+          autor_matricula: oe.authorMatricula,
+          descricao: sanitize(oe.description)
+        };
       })
     };
     await fetch(scriptUrl, { method: 'POST', mode: 'no-cors', cache: 'no-cache', body: JSON.stringify(payload) });
@@ -179,7 +210,7 @@ export const fetchCloudItems = async (scriptUrl: string): Promise<PendingItem[]>
       const isResolved = statusText === 'RESOLVIDO' || statusText === 'CONCLUÍDO';
       
       // PRIORIDADE TOTAL PARA OS DADOS DA PLANILHA
-      const sheetTimestamp = parseDateFromCloud(item.data);
+      const sheetTimestamp = parseDateFromCloud(item.data_criacao || item.data);
       const sheetResolvedAt = parseDateFromCloud(item.data_resolucao);
 
       return {
@@ -232,7 +263,7 @@ export const fetchCloudReports = async (scriptUrl: string): Promise<Report[]> =>
         turno: (r.turno || 'MANHÃ') as any,
         items: items,
         pendingItems: [],
-        generalObservations: sanitize(r.obs),
+        generalObservations: sanitize(r.observacoes || r.obs),
         synced: true
       };
     });
@@ -267,6 +298,7 @@ export const fetchCloudQualityReports = async (scriptUrl: string): Promise<Quali
         operator: sanitize(qr.operador),
         turma: (qr.turma || 'A') as any,
         turno: (qr.turno || 'MANHÃ') as any,
+        category: (qr.categoria || qr.category || 'DFP2') as any,
         ply: sanitize(qr.ply),
         dfp2_c_cr: qr.dfp2_c_cr || 0,
         dfp2_c_yield: qr.dfp2_c_yield || 0,
@@ -280,10 +312,40 @@ export const fetchCloudQualityReports = async (scriptUrl: string): Promise<Quali
         colunas_d_yield: qr.colunas_d_yield || 0,
         colunas_d_reject_ash: qr.colunas_d_reject_ash || 0,
         colunas_d_conc_ash: qr.colunas_d_conc_ash || 0,
-        humidade_fundo: qr.humidade_fundo || 0,
-        humidade_oversize: qr.humidade_oversize || 0,
-        humidade_concentrado: qr.humidade_concentrado || 0,
+        humidade_fundo: qr.hum_fundo || qr.humidade_fundo || 0,
+        humidade_oversize: qr.hum_oversize || qr.humidade_oversize || 0,
+        humidade_concentrado: qr.hum_conc || qr.humidade_concentrado || 0,
         generalObservations: sanitize(qr.obs),
+        synced: true
+      };
+    });
+  } catch (error) { return []; }
+};
+
+export const fetchCloudOperationalEvents = async (scriptUrl: string): Promise<OperationalEvent[]> => {
+  if (!scriptUrl) return [];
+  try {
+    const response = await fetch(`${scriptUrl}?action=getOperationalEvents&t=${Date.now()}`);
+    if (!response.ok) return [];
+    const data = await response.json();
+    if (!Array.isArray(data)) return [];
+
+    return data.map((oe: any): OperationalEvent => {
+      const dateRaw = oe.data || '';
+      const hourRaw = oe.hora || '12:00';
+      const sheetTimestamp = parseDateFromCloud(`${dateRaw} ${hourRaw}`);
+
+      return {
+        id: oe.id || `oe-${Date.now()}-${Math.random()}`,
+        timestamp: sheetTimestamp || Date.now(),
+        type: (oe.tipo || 'ELOGIO').toLowerCase() as any,
+        collaboratorName: sanitize(oe.colaborador),
+        collaboratorMatricula: oe.matricula,
+        collaboratorTeam: sanitize(oe.equipe),
+        collaboratorRole: sanitize(oe.funcao),
+        authorName: sanitize(oe.autor),
+        authorMatricula: oe.autor_matricula,
+        description: sanitize(oe.descricao),
         synced: true
       };
     });

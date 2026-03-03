@@ -26,5 +26,5 @@
     "allowImportingTsExtensions": true,
     "noEmit": true
   },
-  "include": ["src/**/*.ts", "src/**/*.tsx"]
+  "include": ["**/*.ts", "**/*.tsx"]
 }
