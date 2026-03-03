@@ -21,7 +21,7 @@ import {
   AlertCircle
 } from 'lucide-react';
 import { Report, PendingItem, Area, Turma, QualityReport } from '../types';
-import { getScaleForDate, getStatusForTurma } from '../services/shiftService';
+import { getScaleForDate, getStatusForTurma, getCurrentShiftInfo } from '../services/shiftService';
 
 interface DashboardProps {
   reports: Report[];
@@ -106,40 +106,43 @@ const Dashboard: React.FC<DashboardProps> = ({ reports, pendingItems, qualityRep
     }
   };
 
-  const latestQuality = qualityReports[0];
+  const latestQuality = [...qualityReports].sort((a, b) => b.timestamp - a.timestamp)[0];
 
   const getQualityStatus = (section: 'dfp2C' | 'dfp2D' | 'colunaD' | 'humidade') => {
     if (!latestQuality) return { color: 'bg-slate-100', label: 'Sem dados', values: '-' };
 
-    const data = (latestQuality as any)[section];
-    if (!data) return { color: 'bg-slate-100', label: 'Dados Incomp.', values: '-' };
+    if (section === 'dfp2C') {
+      const yld = latestQuality.dfp2_c_yield || 0;
+      const ra = latestQuality.dfp2_c_reject_ash || 0;
+      const ca = latestQuality.dfp2_c_conc_ash || 0;
+      const vals = `YLD ${yld}% | REJ ${ra}% | CONC ${ca}%`;
+      if (yld < 35 || ra < 30) return { color: 'bg-red-500', label: 'Alerta Crítico', values: vals };
+      if (ca > 11) return { color: 'bg-amber-500', label: 'Atenção', values: vals };
+      return { color: 'bg-emerald-500', label: 'Normal', values: vals };
+    }
 
-    if (section === 'dfp2C' || section === 'dfp2D') {
-      const d = data;
-      const cr = parseFloat(d.cr);
-      const yld = parseFloat(d.yield);
-      const ra = parseFloat(d.rejectAsh);
-      const ca = parseFloat(d.concAsh);
-      const vals = `CR ${d.cr}% | YLD ${d.yield}% | REJ ${d.rejectAsh}% | CONC ${d.concAsh}%`;
-      if (cr < 40 || yld < 35 || ra < 30) return { color: 'bg-red-500', label: 'Alerta Crítico', values: vals };
+    if (section === 'dfp2D') {
+      const yld = latestQuality.dfp2_d_yield || 0;
+      const ra = latestQuality.dfp2_d_reject_ash || 0;
+      const ca = latestQuality.dfp2_d_conc_ash || 0;
+      const vals = `YLD ${yld}% | REJ ${ra}% | CONC ${ca}%`;
+      if (yld < 35 || ra < 30) return { color: 'bg-red-500', label: 'Alerta Crítico', values: vals };
       if (ca > 11) return { color: 'bg-amber-500', label: 'Atenção', values: vals };
       return { color: 'bg-emerald-500', label: 'Normal', values: vals };
     }
 
     if (section === 'colunaD') {
-      const d = data;
-      const pa = parseFloat(d.productAsh);
-      const yld = parseFloat(d.yield);
-      const cr = parseFloat(d.cr);
-      const ta = parseFloat(d.tailAsh);
-      const vals = `CR ${d.cr}% | YLD ${d.yield}% | REJ ${d.tailAsh}% | CONC ${d.productAsh}%`;
-      if (pa > 11 || yld < 55 || cr < 65 || ta < 45) return { color: 'bg-red-500', label: 'Fora de Spec', values: vals };
+      const pa = latestQuality.colunas_d_conc_ash || 0;
+      const yld = latestQuality.colunas_d_yield || 0;
+      const ta = latestQuality.colunas_d_reject_ash || 0;
+      const vals = `YLD ${yld}% | REJ ${ta}% | CONC ${pa}%`;
+      if (pa > 11 || yld < 55 || ta < 45) return { color: 'bg-red-500', label: 'Fora de Spec', values: vals };
       return { color: 'bg-emerald-500', label: 'Normal', values: vals };
     }
 
     if (section === 'humidade') {
-      const tm = parseFloat(data.tm);
-      const vals = `TM ${data.tm}%`;
+      const tm = latestQuality.humidade_fundo || 0;
+      const vals = `TM ${tm}%`;
       if (tm > 14.0) return { color: 'bg-red-500', label: 'Muito Alta', values: vals };
       if (tm > 13.5) return { color: 'bg-amber-500', label: 'Acima Target', values: vals };
       if (tm < 12.0) return { color: 'bg-blue-500', label: 'Muito Seco', values: vals };
@@ -184,32 +187,37 @@ const Dashboard: React.FC<DashboardProps> = ({ reports, pendingItems, qualityRep
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          {(['A', 'B', 'C', 'D'] as Turma[]).map(t => {
-            const status = getStatusForTurma(new Date(), t);
-            return (
-              <div key={t} className={`p-4 rounded-2xl border-2 flex items-center justify-between transition-all ${status.isWorking ? 'border-slate-200 bg-white' : 'border-slate-50 bg-slate-50/50'}`}>
-                <div className="flex items-center gap-4">
-                  <div className={`w-12 h-12 rounded-xl flex items-center justify-center font-black text-lg shadow-sm border ${status.isWorking ? getTurmaCardColor(t) : 'bg-white text-slate-300 border-slate-100'}`}>
-                    {t}
-                  </div>
-                  <div>
-                    <p className={`text-[10px] font-black uppercase tracking-widest ${status.isWorking ? 'text-slate-900' : 'text-slate-400'}`}>Turma {t}</p>
-                    <div className="flex items-center gap-1.5 mt-1">
-                      {status.turno === 'FOLGA' ? <Coffee size={12} className="text-slate-300" /> : <Clock size={12} className="text-blue-500" />}
-                      <span className={`text-[9px] font-bold uppercase ${status.turno === 'FOLGA' ? 'text-slate-300' : 'text-slate-600'}`}>
-                        {status.turno}
-                      </span>
+          {(() => {
+            const currentShift = getCurrentShiftInfo();
+            return (['A', 'B', 'C', 'D'] as Turma[]).map(t => {
+              const status = getStatusForTurma(new Date(), t);
+              const isActive = currentShift.turma === t;
+              
+              return (
+                <div key={t} className={`p-4 rounded-2xl border-2 flex items-center justify-between transition-all ${isActive ? 'border-emerald-200 bg-emerald-50/30' : status.isWorking ? 'border-slate-200 bg-white' : 'border-slate-50 bg-slate-50/50'}`}>
+                  <div className="flex items-center gap-4">
+                    <div className={`w-12 h-12 rounded-xl flex items-center justify-center font-black text-lg shadow-sm border ${status.isWorking ? getTurmaCardColor(t) : 'bg-white text-slate-300 border-slate-100'}`}>
+                      {t}
+                    </div>
+                    <div>
+                      <p className={`text-[10px] font-black uppercase tracking-widest ${status.isWorking ? 'text-slate-900' : 'text-slate-400'}`}>Turma {t}</p>
+                      <div className="flex items-center gap-1.5 mt-1">
+                        {status.turno === 'FOLGA' ? <Coffee size={12} className="text-slate-300" /> : <Clock size={12} className="text-blue-500" />}
+                        <span className={`text-[9px] font-bold uppercase ${status.turno === 'FOLGA' ? 'text-slate-300' : 'text-slate-600'}`}>
+                          {status.turno}
+                        </span>
+                      </div>
                     </div>
                   </div>
+                  {isActive && (
+                    <div className={`px-3 py-1 rounded-full text-[8px] font-black uppercase border bg-emerald-600 text-white border-emerald-500 shadow-lg shadow-emerald-600/20 animate-pulse`}>
+                      Ativo Agora
+                    </div>
+                  )}
                 </div>
-                {status.isWorking && (
-                  <div className={`px-3 py-1 rounded-full text-[8px] font-black uppercase border bg-slate-900 text-white`}>
-                    Ativo
-                  </div>
-                )}
-              </div>
-            );
-          })}
+              );
+            });
+          })()}
         </div>
       </button>
 
@@ -226,7 +234,8 @@ const Dashboard: React.FC<DashboardProps> = ({ reports, pendingItems, qualityRep
                 PLY: {latestQuality.ply}
               </div>
             )}
-            <div className="px-3 py-1.5 bg-slate-800 rounded-xl text-[9px] font-black uppercase tracking-widest text-slate-400 border border-slate-700">
+            <div className="px-3 py-1.5 bg-slate-800 rounded-xl text-[9px] font-black uppercase tracking-widest text-slate-400 border border-slate-700 flex items-center gap-2">
+              {latestQuality?.synced ? <Cloud size={10} className="text-emerald-500" /> : <CloudOff size={10} className="text-amber-500" />}
               Último Registro: {latestQuality ? new Date(latestQuality.timestamp).toLocaleTimeString('pt-BR', { hour12: false }) : '--:--'}
             </div>
             <button 

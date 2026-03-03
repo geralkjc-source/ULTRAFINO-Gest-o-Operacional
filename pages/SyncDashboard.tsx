@@ -22,6 +22,7 @@ import {
 } from 'lucide-react';
 
 import { syncToGoogleSheets, testScriptConnection, DEFAULT_SCRIPT_URL, MASTER_SHEET_URL } from '../services/googleSync';
+import { backendService } from '../services/backendService';
 import { Report, PendingItem, QualityReport } from '../types';
 
 const ADMIN_PASSWORD = 'ULTRAADMIN'; 
@@ -55,10 +56,21 @@ const SyncDashboard: React.FC<SyncDashboardProps> = ({ reports, pendingItems, qu
   const handleTestConnection = async () => {
     setTestStatus('loading');
     addLog("Iniciando Handshake Vulcan v3.1...");
+    
+    try {
+      // Testa o Backend Express primeiro
+      const health = await fetch('/api/health').then(r => r.json());
+      if (health.version === "3.1") {
+        addLog("Sucesso: Backend Express v3.1 Ativo.");
+      }
+    } catch (e) {
+      addLog("Aviso: Backend Express não responde.");
+    }
+
     const result = await testScriptConnection(scriptUrl);
     if (result.success) {
       setTestStatus('success');
-      addLog("Sucesso: Backend Vulcan v3.1 Ativo.");
+      addLog("Sucesso: Google Script v3.1 Ativo.");
     } else {
       setTestStatus('error');
       addLog("Erro: Requer script v3.1.");
@@ -72,12 +84,29 @@ const SyncDashboard: React.FC<SyncDashboardProps> = ({ reports, pendingItems, qu
     const unsyncedPending = pendingItems.filter(p => !p.synced);
     const unsyncedQualityReports = qualityReports.filter(qr => !qr.synced);
     
-    const result = await syncToGoogleSheets(scriptUrl, unsyncedReports, unsyncedPending, unsyncedQualityReports);
-    if (result.success) {
-      onSyncSuccess(unsyncedReports.map(r => r.id), unsyncedPending.map(p => p.id), unsyncedQualityReports.map(qr => qr.id));
-      addLog("Sincronismo v3.1 Concluído.");
-    } else {
-      addLog("Falha no sincronismo v3.1.");
+    try {
+      // 1. Sincroniza com Backend Express
+      addLog("Sincronizando com Backend Express...");
+      await backendService.sync({
+        reports: unsyncedReports,
+        pending: unsyncedPending,
+        qualityReports: unsyncedQualityReports,
+        version: "3.1"
+      });
+      addLog("Backend Express: OK.");
+
+      // 2. Sincroniza com Google Sheets
+      addLog("Sincronizando com Google Sheets...");
+      const result = await syncToGoogleSheets(scriptUrl, unsyncedReports, unsyncedPending, unsyncedQualityReports);
+      if (result.success) {
+        onSyncSuccess(unsyncedReports.map(r => r.id), unsyncedPending.map(p => p.id), unsyncedQualityReports.map(qr => qr.id));
+        addLog("Sincronismo v3.1 Concluído.");
+      } else {
+        addLog("Falha no Google Sheets v3.1.");
+      }
+    } catch (error) {
+      addLog("Erro crítico no sincronismo v3.1.");
+      console.error(error);
     }
     setIsSyncing(false);
   };

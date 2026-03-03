@@ -1,8 +1,8 @@
 
-import { Report, PendingItem, Area, QualityReport } from '../types';
+import { Report, PendingItem, Area, QualityReport, OperationalEvent } from '../types';
 
-// Endpoint oficial v3.0
-export const DEFAULT_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwPoZk1y0cw4gZtQRMAR9ix0ZvMbgeqZA7fVveIb0lKrBteW06AqYqh2s20yQynmVEo/exec'; 
+// Endpoint oficial v3.2
+export const DEFAULT_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxtvbBGbkqymcbFIKjKRXfy_GFW7b9pb_FaH6smuAUrosTbs3l02FYe753qx_1Lg19oZA/exec'; 
 export const MASTER_SHEET_URL = 'https://docs.google.com/spreadsheets/d/1HjhTUldjn8Kk9mVF8GMw7ZQoPbqspMhqGV7OM5TPCTY/edit';
 
 export interface SyncResponse {
@@ -76,7 +76,8 @@ export const syncToGoogleSheets = async (
   scriptUrl: string, 
   reports: Report[], 
   pending: PendingItem[],
-  qualityReports: QualityReport[]
+  qualityReports: QualityReport[],
+  operationalEvents: OperationalEvent[] = []
 ): Promise<SyncResponse> => {
   if (!scriptUrl) return { success: false, message: "URL ausente." };
   try {
@@ -96,7 +97,7 @@ export const syncToGoogleSheets = async (
 
     const payload = {
       action: "sync",
-      version: "3.1_stable_time",
+      version: "3.2_operational",
       mes_referencia: mesRef,
       reports: (reports || []).map(r => {
         const fmt = formatForSheet(r.timestamp);
@@ -158,6 +159,22 @@ export const syncToGoogleSheets = async (
           humidade_oversize: qr.humidade_oversize,
           humidade_concentrado: qr.humidade_concentrado,
           obs: sanitize(qr.generalObservations)
+        };
+      }),
+      operationalEvents: (operationalEvents || []).map(oe => {
+        const fmt = formatForSheet(oe.timestamp);
+        return {
+          id: oe.id,
+          data: fmt.date,
+          hora: fmt.time,
+          tipo: oe.type.toUpperCase(),
+          colaborador: sanitize(oe.collaboratorName),
+          matricula: oe.collaboratorMatricula,
+          equipe: sanitize(oe.collaboratorTeam),
+          funcao: sanitize(oe.collaboratorRole),
+          autor: sanitize(oe.authorName),
+          autor_matricula: oe.authorMatricula,
+          descricao: sanitize(oe.description)
         };
       })
     };
@@ -284,6 +301,36 @@ export const fetchCloudQualityReports = async (scriptUrl: string): Promise<Quali
         humidade_oversize: qr.humidade_oversize || 0,
         humidade_concentrado: qr.humidade_concentrado || 0,
         generalObservations: sanitize(qr.obs),
+        synced: true
+      };
+    });
+  } catch (error) { return []; }
+};
+
+export const fetchCloudOperationalEvents = async (scriptUrl: string): Promise<OperationalEvent[]> => {
+  if (!scriptUrl) return [];
+  try {
+    const response = await fetch(`${scriptUrl}?action=getOperationalEvents&t=${Date.now()}`);
+    if (!response.ok) return [];
+    const data = await response.json();
+    if (!Array.isArray(data)) return [];
+
+    return data.map((oe: any): OperationalEvent => {
+      const dateRaw = oe.data || '';
+      const hourRaw = oe.hora || '12:00';
+      const sheetTimestamp = parseDateFromCloud(`${dateRaw} ${hourRaw}`);
+
+      return {
+        id: oe.id || `oe-${Date.now()}-${Math.random()}`,
+        timestamp: sheetTimestamp || Date.now(),
+        type: (oe.tipo || 'ELOGIO').toLowerCase() as any,
+        collaboratorName: sanitize(oe.colaborador),
+        collaboratorMatricula: oe.matricula,
+        collaboratorTeam: sanitize(oe.equipe),
+        collaboratorRole: sanitize(oe.funcao),
+        authorName: sanitize(oe.autor),
+        authorMatricula: oe.autor_matricula,
+        description: sanitize(oe.descricao),
         synced: true
       };
     });
