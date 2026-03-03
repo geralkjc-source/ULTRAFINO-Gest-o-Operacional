@@ -27,17 +27,20 @@ interface DashboardProps {
   reports: Report[];
   pendingItems: PendingItem[];
   qualityReports: QualityReport[];
+  operationalEvents: OperationalEvent[];
   onRefreshCloud: () => Promise<void>;
   isRefreshing: boolean;
 }
 
-const Dashboard: React.FC<DashboardProps> = ({ reports, pendingItems, qualityReports, onRefreshCloud, isRefreshing }) => {
+const Dashboard: React.FC<DashboardProps> = ({ reports, pendingItems, qualityReports, operationalEvents, onRefreshCloud, isRefreshing }) => {
   const navigate = useNavigate();
   const [todayScale, setTodayScale] = useState(getScaleForDate(new Date()));
 
   const unsyncedCount = 
     reports.filter(r => !r.synced).length + 
-    pendingItems.filter(p => !p.synced).length;
+    pendingItems.filter(p => !p.synced).length +
+    qualityReports.filter(qr => !qr.synced).length +
+    operationalEvents.filter(oe => !oe.synced).length;
   
   const getAreaStats = (area: Area) => {
     const areaReports = reports.filter(r => r.area === area);
@@ -337,11 +340,11 @@ const Dashboard: React.FC<DashboardProps> = ({ reports, pendingItems, qualityRep
             className={`w-full py-4 rounded-2xl font-black uppercase text-xs tracking-widest flex items-center justify-center gap-3 transition-all shadow-lg active:scale-95 ${
               isRefreshing 
                 ? 'bg-slate-900 text-white animate-pulse' 
-                : 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-emerald-600/20'
+                : 'bg-blue-600 hover:bg-blue-700 text-white shadow-blue-600/20'
             }`}
           >
-            {isRefreshing ? <RefreshCw size={18} className="animate-spin" /> : <RefreshCw size={18} />}
-            {isRefreshing ? 'SICRONISANDO...' : 'OBTER DADOS ONLINE'}
+            {isRefreshing ? <RefreshCw size={18} className="animate-spin" /> : <Cloud size={18} />}
+            {isRefreshing ? 'SINCRONIZANDO...' : 'SINCRONIZAR AGORA'}
           </button>
         </div>
       </div>

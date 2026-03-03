@@ -2,7 +2,7 @@
 import { Report, PendingItem, Area, QualityReport, OperationalEvent } from '../types';
 
 // Endpoint oficial v3.2
-export const DEFAULT_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxtvbBGbkqymcbFIKjKRXfy_GFW7b9pb_FaH6smuAUrosTbs3l02FYe753qx_1Lg19oZA/exec'; 
+export const DEFAULT_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbz3Syoy4hv3Tui7bGMsCfStWTA3wttOfeWwUHqHyMEvWhQJNntNDVcj5GYXp0f3ld2r/exec'; 
 export const MASTER_SHEET_URL = 'https://docs.google.com/spreadsheets/d/1HjhTUldjn8Kk9mVF8GMw7ZQoPbqspMhqGV7OM5TPCTY/edit';
 
 export interface SyncResponse {

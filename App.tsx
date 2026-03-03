@@ -119,7 +119,7 @@ const Sidebar = ({ isOpen, toggle, unsyncedCount }: { isOpen: boolean; toggle: (
   );
 };
 
-const Header = ({ onToggleSidebar, unsyncedCount, isSyncing }: { onToggleSidebar: () => void, unsyncedCount: number, isSyncing: boolean }) => (
+const Header = ({ onToggleSidebar, unsyncedCount, isSyncing, onSync }: { onToggleSidebar: () => void, unsyncedCount: number, isSyncing: boolean, onSync: () => void }) => (
   <header className="sticky top-0 z-30 bg-white/80 backdrop-blur-md border-b border-slate-200 px-6 py-4 flex items-center justify-between">
     <div className="flex items-center gap-4">
       <button onClick={onToggleSidebar} className="lg:hidden p-2 text-slate-600 hover:bg-slate-100 rounded-md"><Menu size={24} /></button>
@@ -133,9 +133,18 @@ const Header = ({ onToggleSidebar, unsyncedCount, isSyncing }: { onToggleSidebar
       </div>
     </div>
     <div className="flex items-center gap-4">
-      {unsyncedCount > 0 && (
-        <div className="flex items-center gap-2 bg-amber-50 text-amber-600 px-3 py-1.5 rounded-full border border-amber-100 text-[9px] font-black uppercase tracking-wider animate-bounce">
-          <CloudOff size={14} /> {unsyncedCount} Pendentes
+      {unsyncedCount > 0 ? (
+        <button 
+          onClick={onSync}
+          disabled={isSyncing}
+          className="flex items-center gap-2 bg-amber-50 text-amber-600 px-3 py-1.5 rounded-full border border-amber-100 text-[9px] font-black uppercase tracking-wider hover:bg-amber-100 transition-all shadow-sm"
+        >
+          {isSyncing ? <RefreshCw size={14} className="animate-spin" /> : <CloudOff size={14} />} 
+          {isSyncing ? 'Sincronizando...' : `${unsyncedCount} Pendentes`}
+        </button>
+      ) : (
+        <div className="flex items-center gap-2 bg-emerald-50 text-emerald-600 px-3 py-1.5 rounded-full border border-emerald-100 text-[9px] font-black uppercase tracking-wider">
+          <Cloud size={14} /> Sincronizado
         </div>
       )}
       <div className="w-8 h-8 rounded-full bg-slate-100 border border-slate-200 flex items-center justify-center text-slate-400"><Settings size={18} /></div>
@@ -155,6 +164,13 @@ const App: React.FC = () => {
 
   // Carregamento Inicial
   useEffect(() => {
+    // Migração de URL do Google Script (v3.2)
+    const currentUrl = localStorage.getItem('google_apps_script_url');
+    const oldUrl = 'https://script.google.com/macros/s/AKfycbxtvbBGbkqymcbFIKjKRXfy_GFW7b9pb_FaH6smuAUrosTbs3l02FYe753qx_1Lg19oZA/exec';
+    if (currentUrl === oldUrl) {
+      localStorage.setItem('google_apps_script_url', DEFAULT_SCRIPT_URL);
+    }
+
     const loadInitialData = async () => {
       try {
         // Tenta carregar do backend primeiro
@@ -206,6 +222,7 @@ const App: React.FC = () => {
 
   const unsyncedCount = reports.filter(r => !r.synced).length + 
                        pendingItems.filter(p => !p.synced).length + 
+                       qualityReports.filter(qr => !qr.synced).length +
                        operationalEvents.filter(oe => !oe.synced).length;
 
   /**
@@ -234,6 +251,12 @@ const App: React.FC = () => {
           operationalEvents: unsyncedOperational,
           version: "3.2"
         });
+        
+        // Marca como sincronizado localmente IMEDIATAMENTE após sucesso no backend
+        setReports(prev => prev.map(r => unsyncedReports.some(ur => ur.id === r.id) ? { ...r, synced: true } : r));
+        setPendingItems(prev => prev.map(p => unsyncedPending.some(up => up.id === p.id) ? { ...p, synced: true } : p));
+        setQualityReports(prev => prev.map(qr => unsyncedQualityReports.some(uqr => uqr.id === qr.id) ? { ...qr, synced: true } : qr));
+        setOperationalEvents(prev => prev.map(oe => unsyncedOperational.some(uoe => uoe.id === oe.id) ? { ...oe, synced: true } : oe));
       }
 
       // 2. Busca dados atualizados do Backend
@@ -288,6 +311,14 @@ const App: React.FC = () => {
       setIsGlobalSyncing(false);
     }
   }, [reports, pendingItems, qualityReports, operationalEvents]);
+
+  // Sincronismo Automático a cada 5 minutos
+  useEffect(() => {
+    const interval = setInterval(() => {
+      refreshDataFromCloud();
+    }, 5 * 60 * 1000);
+    return () => clearInterval(interval);
+  }, [refreshDataFromCloud]);
 
   // Disparo de Sync ao entrar no App
   useEffect(() => {
@@ -416,16 +447,17 @@ const App: React.FC = () => {
             onToggleSidebar={() => setIsSidebarOpen(!isSidebarOpen)} 
             unsyncedCount={unsyncedCount} 
             isSyncing={isGlobalSyncing} 
+            onSync={() => refreshDataFromCloud()}
           />
           <div className="flex-1 p-6">
             <Routes>
-              <Route path="/" element={<Dashboard reports={reports} pendingItems={pendingItems} qualityReports={qualityReports} onRefreshCloud={() => refreshDataFromCloud()} isRefreshing={isGlobalSyncing} />} />
+              <Route path="/" element={<Dashboard reports={reports} pendingItems={pendingItems} qualityReports={qualityReports} operationalEvents={operationalEvents} onRefreshCloud={() => refreshDataFromCloud()} isRefreshing={isGlobalSyncing} />} />
               <Route path="/calendar" element={<ShiftCalendar />} />
               <Route path="/charts" element={<Analytics reports={reports} pendingItems={pendingItems} cloudStats={cloudStats} onRefresh={() => refreshDataFromCloud()} isRefreshing={isGlobalSyncing} syncSource={lastSyncSource} />} />
               <Route path="/checklist/:areaName" element={<ChecklistArea onSaveReport={addReport} />} />
               <Route path="/pending" element={<PendingList pendingItems={pendingItems} onResolve={resolvePending} onRefresh={() => refreshDataFromCloud()} isRefreshing={isGlobalSyncing} onAddComment={() => {}} />} />
               <Route path="/history" element={<ReportsHistory reports={reports} pendingItems={pendingItems} onAddItemComment={() => {}} />} />
-              <Route path="/sync" element={<SyncDashboard reports={reports} pendingItems={pendingItems} onSyncSuccess={onSyncSuccess} />} />
+              <Route path="/sync" element={<SyncDashboard reports={reports} pendingItems={pendingItems} qualityReports={qualityReports} operationalEvents={operationalEvents} onSyncSuccess={onSyncSuccess} />} />
               <Route path="/dfp" element={<DFPResults onSaveQualityReport={addQualityReport} qualityReports={qualityReports} />} />
               <Route path="/forms" element={<OperationalForms onAddManualPending={addManualPending} onSaveOperationalEvent={addOperationalEvent} operationalEvents={operationalEvents} />} />
               <Route path="/performance-history" element={<PerformanceHistory operationalEvents={operationalEvents} />} />
