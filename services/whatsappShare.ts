@@ -1,55 +1,6 @@
 
-import { Report, ChecklistItem, PendingItem, QualityReport, QualityCategory } from '../types';
+import { Report, ChecklistItem, PendingItem } from '../types';
 import { CHECKLIST_TEMPLATES } from '../constants';
-
-/**
- * Formata um relatório de qualidade para WhatsApp.
- */
-export const formatQualityReportForWhatsApp = (report: QualityReport): string => {
-  const dateStr = new Date(report.timestamp).toLocaleDateString('pt-BR');
-  const timeStr = new Date(report.timestamp).toLocaleTimeString('pt-BR', { hour12: false, hour: '2-digit', minute: '2-digit' });
-  
-  const categoryLabels: Record<QualityCategory, string> = {
-    'DFP2': 'DFP2 - PLANTAS C/D',
-    'COLUNAS_D': 'COLUNAS D',
-    'HUMIDADE_PLY': 'HUMIDADE E PLY'
-  };
-
-  let message = `*RELATÓRIO DE QUALIDADE E YIELD*\n`;
-  message += `📍 ÁREA: ${categoryLabels[report.category]}\n`;
-  message += `📅 DATA: ${dateStr} | 🕒 HORA: ${timeStr}\n`;
-  message += `🔄 TURNO: ${report.turno.toUpperCase()} | 👥 TURMA: ${report.turma} | 👷 OPERADOR: ${report.operator.toUpperCase()}\n\n`;
-
-  if (report.category === 'DFP2') {
-    if (report.dfp2_c_yield || report.dfp2_c_reject_ash || report.dfp2_c_conc_ash) {
-      message += `*PLANTA C*\n`;
-      message += `📈 YIELD: ${report.dfp2_c_yield}% \n`;
-      message += `📉 REJECT ASH: ${report.dfp2_c_reject_ash}% \n`;
-      message += `💎 CONC ASH: ${report.dfp2_c_conc_ash}% \n\n`;
-    }
-    if (report.dfp2_d_yield || report.dfp2_d_reject_ash || report.dfp2_d_conc_ash) {
-      message += `*PLANTA D*\n`;
-      message += `📈 YIELD: ${report.dfp2_d_yield}% \n`;
-      message += `📉 REJECT ASH: ${report.dfp2_d_reject_ash}% \n`;
-      message += `💎 CONC ASH: ${report.dfp2_d_conc_ash}% \n`;
-    }
-  } else if (report.category === 'COLUNAS_D') {
-    message += `💎 PRODUCT ASH: ${report.colunas_d_conc_ash}% \n`;
-    message += `📈 YIELD: ${report.colunas_d_yield}% \n`;
-    message += `📉 TAIL ASH: ${report.colunas_d_reject_ash}% \n`;
-  } else if (report.category === 'HUMIDADE_PLY') {
-    message += `🏷️ PLY: ${report.ply}\n`;
-    message += `💧 HUMIDADE FUNDO: ${report.humidade_fundo}% \n`;
-    if (report.humidade_oversize) message += `💧 HUMIDADE OVERSIZE: ${report.humidade_oversize}% \n`;
-    if (report.humidade_concentrado) message += `💧 HUMIDADE CONCENTRADO: ${report.humidade_concentrado}% \n`;
-  }
-
-  if (report.generalObservations) {
-    message += `\n📝 *OBSERVAÇÕES*\n${report.generalObservations.toUpperCase()}\n`;
-  }
-
-  return message.trim();
-};
 
 /**
  * Formata um resumo de múltiplas pendências no formato solicitado.

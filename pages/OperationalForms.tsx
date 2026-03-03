@@ -17,7 +17,7 @@ import {
   Cpu,
   UserCog
 } from 'lucide-react';
-import { Area, Turma, Turno, Discipline, PendingItem, OperationalEvent } from '../types';
+import { Area, Turma, Turno, Discipline, PendingItem } from '../types';
 import { getCurrentShiftInfo } from '../services/shiftService';
 import { fetchEmployees, Employee } from '../services/employeeService';
 
@@ -26,11 +26,9 @@ import autoTable from 'jspdf-autotable';
 
 interface OperationalFormsProps {
   onAddManualPending: (pending: PendingItem) => void;
-  onSaveOperationalEvent: (event: OperationalEvent) => void;
-  operationalEvents: OperationalEvent[];
 }
 
-const OperationalForms: React.FC<OperationalFormsProps> = ({ onAddManualPending, onSaveOperationalEvent, operationalEvents }) => {
+const OperationalForms: React.FC<OperationalFormsProps> = ({ onAddManualPending }) => {
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState<'praise' | 'failure'>('praise');
   const [detectedScale, setDetectedScale] = useState<{ turma: Turma; turno: Turno }>(getCurrentShiftInfo());
@@ -243,49 +241,17 @@ const OperationalForms: React.FC<OperationalFormsProps> = ({ onAddManualPending,
 
   const handlePraiseSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    
-    const event: OperationalEvent = {
-      id: `elogio-${Date.now()}`,
-      timestamp: Date.now(),
-      type: 'elogio',
-      collaboratorName: praiseData.elogioNome,
-      collaboratorMatricula: praiseData.elogioMatricula,
-      collaboratorTeam: praiseData.elogioDepartamento,
-      collaboratorRole: praiseData.elogioFuncao,
-      authorName: praiseData.quemElogiaNome,
-      authorMatricula: praiseData.quemElogiaMatricula,
-      description: praiseData.motivoElogio,
-      details: praiseData,
-      synced: false
-    };
-
-    onSaveOperationalEvent(event);
+    console.log('Formulário de Elogio Submetido:', praiseData);
     generatePraisePDF(praiseData);
-    alert('Elogio registrado e sincronizado com a nuvem!');
+    alert('Formulário de Elogio Submetido e PDF Gerado com Sucesso!');
     navigate(-1);
   };
 
   const handleFailureSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    
-    const event: OperationalEvent = {
-      id: `falha-${Date.now()}`,
-      timestamp: Date.now(),
-      type: 'falha',
-      collaboratorName: failureData.colaboradorNome,
-      collaboratorMatricula: failureData.colaboradorMatricula,
-      collaboratorTeam: failureData.colaboradorDepartamento,
-      collaboratorRole: failureData.colaboradorFuncao,
-      authorName: failureData.responsavelRegisto,
-      authorMatricula: '', // Não temos matrícula do autor no form de falha original, mas podemos extrair se necessário
-      description: failureData.descricaoFalha,
-      details: failureData,
-      synced: false
-    };
-
-    onSaveOperationalEvent(event);
+    console.log('Formulário de Falha Submetido:', failureData);
     generateFailurePDF(failureData);
-    alert('Falha registrada e sincronizada com a nuvem!');
+    alert('Formulário de Falha Submetido e PDF Gerado com Sucesso!');
     navigate(-1);
   };
 
@@ -364,47 +330,10 @@ const OperationalForms: React.FC<OperationalFormsProps> = ({ onAddManualPending,
 
 
 
-  const getCollaboratorStats = (matricula: string) => {
-    const events = operationalEvents.filter(oe => oe.collaboratorMatricula === matricula);
-    const praises = events.filter(e => e.type === 'elogio').length;
-    const failures = events.filter(e => e.type === 'falha').length;
-    const balance = failures - praises;
-    
-    return { praises, failures, balance, warning: balance >= 3 };
-  };
-
-  const StatsBadge = ({ matricula }: { matricula: string }) => {
-    if (!matricula) return null;
-    const stats = getCollaboratorStats(matricula);
-    return (
-      <div className="flex gap-2 mt-2">
-        <div className="bg-emerald-50 text-emerald-600 px-2 py-1 rounded-md text-[9px] font-black uppercase border border-emerald-100">
-          {stats.praises} Elogios
-        </div>
-        <div className="bg-red-50 text-red-600 px-2 py-1 rounded-md text-[9px] font-black uppercase border border-red-100">
-          {stats.failures} Falhas
-        </div>
-        {stats.warning && (
-          <div className="bg-amber-500 text-white px-2 py-1 rounded-md text-[9px] font-black uppercase animate-pulse">
-            Risco de Advertência
-          </div>
-        )}
-      </div>
-    );
-  };
-
   return (
     <div className="max-w-4xl mx-auto space-y-8 animate-in fade-in duration-500 pb-20">
       <div className="flex items-center justify-between">
-        <div className="flex items-center gap-4">
-          <button onClick={() => navigate(-1)} className="flex items-center gap-2 text-slate-500 hover:text-slate-800 font-black uppercase text-[10px] tracking-widest transition-colors"><ArrowLeftIcon size={16} /> Voltar</button>
-          <button 
-            onClick={() => navigate('/performance-history')} 
-            className="flex items-center gap-2 bg-slate-900 text-white px-4 py-2 rounded-xl font-black uppercase text-[9px] tracking-widest hover:bg-slate-800 transition-all shadow-lg"
-          >
-            <Award size={14} /> Ver Histórico
-          </button>
-        </div>
+        <button onClick={() => navigate(-1)} className="flex items-center gap-2 text-slate-500 hover:text-slate-800 font-black uppercase text-[10px] tracking-widest transition-colors"><ArrowLeftIcon size={16} /> Voltar</button>
         <div className="text-right">
           <h1 className="text-3xl font-black text-slate-900 tracking-tighter uppercase">Formulários Operacionais</h1>
           <p className="text-slate-400 text-[9px] font-bold uppercase tracking-[0.2em] mt-1">Plataforma Ultrafino Usina 2</p>
@@ -434,7 +363,6 @@ const OperationalForms: React.FC<OperationalFormsProps> = ({ onAddManualPending,
             <h2 className="text-[11px] font-black text-slate-900 uppercase tracking-[0.2em] flex items-center gap-2"><UserIcon size={16} className="text-blue-500" /> 1. Dados do Colaborador Elogiado</h2>
             <div className="relative">
               <input type="text" name="elogioNome" placeholder="Nome" value={praiseData.elogioNome} onChange={handlePraiseChange} className="w-full px-6 py-4 bg-slate-50 border-2 border-slate-100 rounded-2xl outline-none font-black uppercase text-sm focus:border-blue-500 focus:bg-white transition-all shadow-inner" required autoComplete="off" />
-              <StatsBadge matricula={praiseData.elogioMatricula} />
               {showSuggestions.visible && showSuggestions.field === 'elogioNome' && (
                 <div className="absolute z-50 w-full mt-2 bg-white border-2 border-slate-100 rounded-2xl shadow-2xl max-h-60 overflow-y-auto">
                   {employees.filter(e => e.nome.toLowerCase().includes(searchTerm.toLowerCase())).map(emp => (
@@ -534,7 +462,6 @@ const OperationalForms: React.FC<OperationalFormsProps> = ({ onAddManualPending,
             <h2 className="text-[11px] font-black text-slate-900 uppercase tracking-[0.2em] flex items-center gap-2"><UserIcon size={16} className="text-red-500" /> 1. Dados do Colaborador Envolvido</h2>
             <div className="relative">
               <input type="text" name="colaboradorNome" placeholder="Nome" value={failureData.colaboradorNome} onChange={handleFailureChange} className="w-full px-6 py-4 bg-slate-50 border-2 border-slate-100 rounded-2xl outline-none font-black uppercase text-sm focus:border-red-500 focus:bg-white transition-all shadow-inner" required autoComplete="off" />
-              <StatsBadge matricula={failureData.colaboradorMatricula} />
               {showSuggestions.visible && showSuggestions.field === 'colaboradorNome' && (
                 <div className="absolute z-50 w-full mt-2 bg-white border-2 border-slate-100 rounded-2xl shadow-2xl max-h-60 overflow-y-auto">
                   {employees.filter(e => e.nome.toLowerCase().includes(searchTerm.toLowerCase())).map(emp => (
