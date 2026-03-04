@@ -10,7 +10,7 @@ export enum Area {
 export type Turma = 'A' | 'B' | 'C' | 'D';
 export type Turno = 'MANHÃ' | 'TARDE' | 'NOITE';
 export type Discipline = 'MECÂNICA' | 'ELÉTRICA' | 'INSTRUMENTAÇÃO' | 'OPERAÇÃO';
-export type QualityCategory = 'DFP2' | 'COLUNAS_D' | 'HUMIDADE_PLY';
+export type QualityCategory = 'DFP2' | 'DFP2_C' | 'DFP2_D' | 'COLUNAS_D' | 'HUMIDADE_PLY';
 
 export interface Comment {
   id: string;
@@ -65,6 +65,7 @@ export interface PendingItem {
 export interface QualityReport {
   id: string;
   timestamp: number;
+  area: Area;
   operator: string;
   turma: Turma;
   turno: Turno;

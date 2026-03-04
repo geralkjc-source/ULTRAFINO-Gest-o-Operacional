@@ -1,4 +1,5 @@
 import express from "express";
+import cors from "cors";
 import { createServer as createViteServer } from "vite";
 import fs from "fs";
 import path from "path";
@@ -24,15 +25,25 @@ async function startServer() {
   const app = express();
   const PORT = 3000;
 
+  app.use(cors());
   app.use(express.json({ limit: '50mb' }));
 
   // Helper to read/write JSON files
-  const readJSON = (file: string) => JSON.parse(fs.readFileSync(file, "utf8"));
+  const readJSON = (file: string) => {
+    try {
+      const content = fs.readFileSync(file, "utf8");
+      if (!content || content.trim() === "") return [];
+      return JSON.parse(content);
+    } catch (e) {
+      console.error(`Error reading ${file}:`, e);
+      return [];
+    }
+  };
   const writeJSON = (file: string, data: any) => fs.writeFileSync(file, JSON.stringify(data, null, 2));
 
   // API routes
   app.get("/api/health", (req, res) => {
-    res.json({ status: "ok", version: "3.2" });
+    res.json({ status: "ok", version: "4.0" });
   });
 
   // Reports Endpoints
@@ -101,6 +112,23 @@ async function startServer() {
     }
   });
 
+  app.put("/api/pending-items/:id", (req, res) => {
+    try {
+      const items = readJSON(PENDING_ITEMS_FILE);
+      const { id } = req.params;
+      const index = items.findIndex((item: any) => item.id === id);
+      if (index !== -1) {
+        items[index] = { ...items[index], ...req.body };
+        writeJSON(PENDING_ITEMS_FILE, items);
+        res.json(items[index]);
+      } else {
+        res.status(404).json({ error: "Item not found" });
+      }
+    } catch (error) {
+      res.status(500).json({ error: "Failed to update pending item" });
+    }
+  });
+
   // Operational Events Endpoints
   app.get("/api/operational-events", (req, res) => {
     try {
@@ -123,59 +151,89 @@ async function startServer() {
     }
   });
 
-  // Sync Endpoint (v3.2)
+  // Sync Endpoint (v4.0)
   app.post("/api/sync", (req, res) => {
+    const requestId = Math.random().toString(36).substring(7);
+    console.log(`[${new Date().toISOString()}] [${requestId}] Sync Request Received`);
     try {
-      const { reports: incomingReports, pending: incomingPending, qualityReports: incomingQuality, operationalEvents: incomingOperational, mes_referencia } = req.body;
+      const { reports: incomingReports, pending: incomingPending, qualityReports: incomingQuality, operationalEvents: incomingOperational } = req.body;
       
+      if (!incomingReports && !incomingPending && !incomingQuality && !incomingOperational) {
+        console.warn(`[${new Date().toISOString()}] [${requestId}] Empty sync request`);
+        return res.json({ success: true, message: "Nada para sincronizar." });
+      }
+
+      let syncCount = 0;
+
       // 1. Sync Reports
       if (incomingReports && Array.isArray(incomingReports)) {
-        const reports = readJSON(REPORTS_FILE);
-        incomingReports.forEach((r: any) => {
-          const index = reports.findIndex((existing: any) => existing.id === r.id);
-          if (index === -1) reports.push(r);
-          else reports[index] = { ...reports[index], ...r };
-        });
-        writeJSON(REPORTS_FILE, reports);
+        try {
+          const reports = readJSON(REPORTS_FILE);
+          incomingReports.forEach((r: any) => {
+            const index = reports.findIndex((existing: any) => existing.id === r.id);
+            if (index === -1) { reports.push(r); syncCount++; }
+            else reports[index] = { ...reports[index], ...r };
+          });
+          writeJSON(REPORTS_FILE, reports);
+        } catch (e) {
+          console.error(`[${requestId}] Error syncing reports:`, e);
+          throw new Error("Erro ao salvar relatórios");
+        }
       }
 
       // 2. Sync Pending Items
       if (incomingPending && Array.isArray(incomingPending)) {
-        const pending = readJSON(PENDING_ITEMS_FILE);
-        incomingPending.forEach((p: any) => {
-          const index = pending.findIndex((existing: any) => existing.id === p.id);
-          if (index === -1) pending.push(p);
-          else pending[index] = { ...pending[index], ...p };
-        });
-        writeJSON(PENDING_ITEMS_FILE, pending);
+        try {
+          const pending = readJSON(PENDING_ITEMS_FILE);
+          incomingPending.forEach((p: any) => {
+            const index = pending.findIndex((existing: any) => existing.id === p.id);
+            if (index === -1) { pending.push(p); syncCount++; }
+            else pending[index] = { ...pending[index], ...p };
+          });
+          writeJSON(PENDING_ITEMS_FILE, pending);
+        } catch (e) {
+          console.error(`[${requestId}] Error syncing pending items:`, e);
+          throw new Error("Erro ao salvar pendências");
+        }
       }
 
       // 3. Sync Quality Reports
       if (incomingQuality && Array.isArray(incomingQuality)) {
-        const quality = readJSON(QUALITY_REPORTS_FILE);
-        incomingQuality.forEach((qr: any) => {
-          const index = quality.findIndex((existing: any) => existing.id === qr.id);
-          if (index === -1) quality.push(qr);
-          else quality[index] = { ...quality[index], ...qr };
-        });
-        writeJSON(QUALITY_REPORTS_FILE, quality);
+        try {
+          const quality = readJSON(QUALITY_REPORTS_FILE);
+          incomingQuality.forEach((qr: any) => {
+            const index = quality.findIndex((existing: any) => existing.id === qr.id);
+            if (index === -1) { quality.push(qr); syncCount++; }
+            else quality[index] = { ...quality[index], ...qr };
+          });
+          writeJSON(QUALITY_REPORTS_FILE, quality);
+        } catch (e) {
+          console.error(`[${requestId}] Error syncing quality reports:`, e);
+          throw new Error("Erro ao salvar qualidade");
+        }
       }
 
       // 4. Sync Operational Events
       if (incomingOperational && Array.isArray(incomingOperational)) {
-        const events = readJSON(OPERATIONAL_EVENTS_FILE);
-        incomingOperational.forEach((oe: any) => {
-          const index = events.findIndex((existing: any) => existing.id === oe.id);
-          if (index === -1) events.push(oe);
-          else events[index] = { ...events[index], ...oe };
-        });
-        writeJSON(OPERATIONAL_EVENTS_FILE, events);
+        try {
+          const events = readJSON(OPERATIONAL_EVENTS_FILE);
+          incomingOperational.forEach((oe: any) => {
+            const index = events.findIndex((existing: any) => existing.id === oe.id);
+            if (index === -1) { events.push(oe); syncCount++; }
+            else events[index] = { ...events[index], ...oe };
+          });
+          writeJSON(OPERATIONAL_EVENTS_FILE, events);
+        } catch (e) {
+          console.error(`[${requestId}] Error syncing operational events:`, e);
+          throw new Error("Erro ao salvar eventos operacionais");
+        }
       }
 
-      res.json({ success: true, message: "Sincronismo v3.2 Concluído no Backend." });
-    } catch (error) {
-      console.error("Sync Error:", error);
-      res.status(500).json({ success: false, message: "Erro no sincronismo v3.2." });
+      console.log(`[${new Date().toISOString()}] [${requestId}] Sync Success: ${syncCount} new items`);
+      res.json({ success: true, message: `Sincronismo v4.0 Concluído (${syncCount} novos itens).` });
+    } catch (error: any) {
+      console.error(`[${requestId}] Sync Error:`, error);
+      res.status(500).json({ success: false, message: error.message || "Erro interno no sincronismo v4.0." });
     }
   });
 
