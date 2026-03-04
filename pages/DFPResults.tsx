@@ -16,8 +16,6 @@ import { Turma, Turno, QualityReport, QualityCategory } from '../types';
 import { getCurrentShiftInfo } from '../services/shiftService';
 import { fetchEmployees, Employee } from '../services/employeeService';
 import { formatQualityReportForWhatsApp, copyToClipboard } from '../services/whatsappShare';
-import jsPDF from 'jspdf';
-import autoTable from 'jspdf-autotable';
 
 interface DFPResultsProps {
   onSaveQualityReport: (report: QualityReport) => void;
@@ -47,12 +45,15 @@ const DFPResults: React.FC<DFPResultsProps> = ({ onSaveQualityReport, qualityRep
     timestamp: new Date().toISOString().split('T')[0],
     turno: detectedScale.turno,
     dfp2_c_yield: '',
+    dfp2_c_cr: '',
     dfp2_c_reject_ash: '',
     dfp2_c_conc_ash: '',
     dfp2_d_yield: '',
+    dfp2_d_cr: '',
     dfp2_d_reject_ash: '',
     dfp2_d_conc_ash: '',
     colunas_d_yield: '',
+    colunas_d_cr: '',
     colunas_d_reject_ash: '',
     colunas_d_conc_ash: '',
     humidade_fundo: '',
@@ -114,127 +115,70 @@ const DFPResults: React.FC<DFPResultsProps> = ({ onSaveQualityReport, qualityRep
     setShowSuggestions(false);
   };
 
-  const generatePDF = (category: QualityCategory) => {
-    const doc = new jsPDF({ orientation: 'landscape' });
-    const timestamp = new Date().toLocaleString('pt-BR', { hour12: false });
-    const pageWidth = doc.internal.pageSize.getWidth();
-
-    // Header Background
-    doc.setFillColor(15, 23, 42);
-    doc.rect(0, 0, pageWidth, 35, 'F');
-    
-    // Header Text
-    doc.setTextColor(255, 255, 255);
-    doc.setFontSize(20);
-    doc.setFont('helvetica', 'bold');
-    doc.text('RELATÓRIO DE QUALIDADE E YIELD', pageWidth / 2, 18, { align: 'center' });
-    
-    doc.setFontSize(9);
-    doc.setFont('helvetica', 'normal');
-    doc.text(`CATEGORIA: ${category.replace('_', ' ')}`, pageWidth / 2, 26, { align: 'center' });
-
-    // Meta Info Section
-    doc.setTextColor(30, 41, 59);
-    doc.setFontSize(10);
-    
-    doc.setFont('helvetica', 'bold');
-    doc.text('OPERADOR:', 15, 45);
-    doc.setFont('helvetica', 'normal');
-    doc.text(formData.operator.toUpperCase(), 45, 45);
-    
-    doc.setFont('helvetica', 'bold');
-    doc.text('DATA:', 15, 52);
-    doc.setFont('helvetica', 'normal');
-    doc.text(formData.timestamp, 45, 52);
-
-    doc.setFont('helvetica', 'bold');
-    doc.text('GERADO EM:', pageWidth / 2, 52);
-    doc.setFont('helvetica', 'normal');
-    doc.text(timestamp, pageWidth / 2 + 30, 52);
-
-    let body: any[] = [];
-
-    if (category === 'DFP2') {
-      body = [
-        [{ content: 'DFP 2 - PLANTA C', colSpan: 3, styles: { fillColor: [241, 245, 249], fontStyle: 'bold', halign: 'center', textColor: [30, 41, 59] } }],
-        ['Yield (%)', formData.dfp2_c_yield, verificarDFP2({yield: formData.dfp2_c_yield, rejectAsh: formData.dfp2_c_reject_ash, concAsh: formData.dfp2_c_conc_ash}).join(' | ')],
-        ['Reject Ash (%)', formData.dfp2_c_reject_ash, ''],
-        ['Conc Ash (%)', formData.dfp2_c_conc_ash, ''],
-        [{ content: 'DFP 2 - PLANTA D', colSpan: 3, styles: { fillColor: [241, 245, 249], fontStyle: 'bold', halign: 'center', textColor: [30, 41, 59] } }],
-        ['Yield (%)', formData.dfp2_d_yield, verificarDFP2({yield: formData.dfp2_d_yield, rejectAsh: formData.dfp2_d_reject_ash, concAsh: formData.dfp2_d_conc_ash}).join(' | ')],
-        ['Reject Ash (%)', formData.dfp2_d_reject_ash, ''],
-        ['Conc Ash (%)', formData.dfp2_d_conc_ash, ''],
-      ];
-    } else if (category === 'COLUNAS_D') {
-      body = [
-        [{ content: 'COLUNAS D', colSpan: 3, styles: { fillColor: [241, 245, 249], fontStyle: 'bold', halign: 'center', textColor: [30, 41, 59] } }],
-        ['Product Ash (%)', formData.colunas_d_conc_ash, verificarColunaD({productAsh: formData.colunas_d_conc_ash, yield: formData.colunas_d_yield, tailAsh: formData.colunas_d_reject_ash}).join(' | ')],
-        ['Yield (%)', formData.colunas_d_yield, ''],
-        ['Tail Ash (%)', formData.colunas_d_reject_ash, ''],
-      ];
-    } else if (category === 'HUMIDADE_PLY') {
-      body = [
-        [{ content: 'HUMIDADE E PLY', colSpan: 3, styles: { fillColor: [241, 245, 249], fontStyle: 'bold', halign: 'center', textColor: [30, 41, 59] } }],
-        ['PLY', formData.ply, ''],
-        ['Humidade Fundo (%)', formData.humidade_fundo, verificarHumidade(formData.humidade_fundo).join(' | ')],
-        ['Humidade Oversize (%)', formData.humidade_oversize, verificarHumidade(formData.humidade_oversize).join(' | ')],
-        ['Humidade Concentrado (%)', formData.humidade_concentrado, verificarHumidade(formData.humidade_concentrado).join(' | ')],
-      ];
-    }
-
-    autoTable(doc, {
-      startY: 60,
-      head: [['PARÂMETRO', 'VALOR', 'STATUS / ALERTAS DE QUALIDADE']],
-      body: body,
-      theme: 'grid',
-      headStyles: { fillColor: [15, 23, 42], textColor: [255, 255, 255], fontStyle: 'bold', halign: 'center' },
-      styles: { fontSize: 9, cellPadding: 4, lineColor: [226, 232, 240] },
-      columnStyles: { 
-        0: { fontStyle: 'bold', cellWidth: 80 },
-        1: { halign: 'center', cellWidth: 40 },
-        2: { fontSize: 8, textColor: [71, 85, 105] }
-      }
-    });
-
-    doc.save(`Relatorio_Qualidade_${category}_${Date.now()}.pdf`);
-  };
-
   const handleSubmit = (e: React.FormEvent) => {
     if (e) e.preventDefault();
     if (!selectedCategory) return;
     
-    const newReport: QualityReport = {
-      id: `qual-${Date.now()}`,
-      timestamp: Date.now(),
+    const now = Date.now();
+    const baseReport = {
+      id: `qual-${now}`,
+      timestamp: now,
       operator: formData.operator,
       turma: detectedScale.turma,
       turno: detectedScale.turno,
-      category: selectedCategory,
       generalObservations: formData.generalObservations
     };
 
+    const parseValue = (val: string) => parseFloat(val.replace(',', '.') || '0');
+
+    const reportsToSave: QualityReport[] = [];
+
     if (selectedCategory === 'DFP2') {
-      newReport.dfp2_c_yield = parseFloat(formData.dfp2_c_yield || '0');
-      newReport.dfp2_c_reject_ash = parseFloat(formData.dfp2_c_reject_ash || '0');
-      newReport.dfp2_c_conc_ash = parseFloat(formData.dfp2_c_conc_ash || '0');
-      newReport.dfp2_d_yield = parseFloat(formData.dfp2_d_yield || '0');
-      newReport.dfp2_d_reject_ash = parseFloat(formData.dfp2_d_reject_ash || '0');
-      newReport.dfp2_d_conc_ash = parseFloat(formData.dfp2_d_conc_ash || '0');
+      if (formData.dfp2_c_yield || formData.dfp2_c_cr || formData.dfp2_c_reject_ash || formData.dfp2_c_conc_ash) {
+        reportsToSave.push({
+          ...baseReport,
+          id: `qual-c-${now}`,
+          category: 'DFP2_C',
+          dfp2_c_yield: parseValue(formData.dfp2_c_yield),
+          dfp2_c_cr: parseValue(formData.dfp2_c_cr),
+          dfp2_c_reject_ash: parseValue(formData.dfp2_c_reject_ash),
+          dfp2_c_conc_ash: parseValue(formData.dfp2_c_conc_ash),
+        } as QualityReport);
+      }
+      if (formData.dfp2_d_yield || formData.dfp2_d_cr || formData.dfp2_d_reject_ash || formData.dfp2_d_conc_ash) {
+        reportsToSave.push({
+          ...baseReport,
+          id: `qual-d-${now}`,
+          category: 'DFP2_D',
+          dfp2_d_yield: parseValue(formData.dfp2_d_yield),
+          dfp2_d_cr: parseValue(formData.dfp2_d_cr),
+          dfp2_d_reject_ash: parseValue(formData.dfp2_d_reject_ash),
+          dfp2_d_conc_ash: parseValue(formData.dfp2_d_conc_ash),
+        } as QualityReport);
+      }
     } else if (selectedCategory === 'COLUNAS_D') {
-      newReport.colunas_d_yield = parseFloat(formData.colunas_d_yield || '0');
-      newReport.colunas_d_reject_ash = parseFloat(formData.colunas_d_reject_ash || '0');
-      newReport.colunas_d_conc_ash = parseFloat(formData.colunas_d_conc_ash || '0');
+      reportsToSave.push({
+        ...baseReport,
+        category: 'COLUNAS_D',
+        colunas_d_yield: parseValue(formData.colunas_d_yield),
+        colunas_d_cr: parseValue(formData.colunas_d_cr),
+        colunas_d_reject_ash: parseValue(formData.colunas_d_reject_ash),
+        colunas_d_conc_ash: parseValue(formData.colunas_d_conc_ash),
+      } as QualityReport);
     } else if (selectedCategory === 'HUMIDADE_PLY') {
-      newReport.ply = formData.ply;
-      newReport.humidade_fundo = parseFloat(formData.humidade_fundo || '0');
-      newReport.humidade_oversize = parseFloat(formData.humidade_oversize || '0');
-      newReport.humidade_concentrado = parseFloat(formData.humidade_concentrado || '0');
+      reportsToSave.push({
+        ...baseReport,
+        category: 'HUMIDADE_PLY',
+        ply: formData.ply,
+        humidade_fundo: parseValue(formData.humidade_fundo),
+        humidade_oversize: parseValue(formData.humidade_oversize),
+        humidade_concentrado: parseValue(formData.humidade_concentrado),
+      } as QualityReport);
     }
 
-    onSaveQualityReport(newReport);
-    generatePDF(selectedCategory);
-
-    const text = formatQualityReportForWhatsApp(newReport);
+    reportsToSave.forEach(report => onSaveQualityReport(report));
+    
+    const text = reportsToSave.map(formatQualityReportForWhatsApp).join('\n\n');
     copyToClipboard(text).then(success => {
       if (success) {
         alert('Registrado e Texto Copiado para o WhatsApp!');
@@ -387,11 +331,12 @@ const DFPResults: React.FC<DFPResultsProps> = ({ onSaveQualityReport, qualityRep
                   </div>
                 </div>
                 
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                   {[
                     { label: 'Yield (%)', field: 'yield' },
-                    { label: 'Reject Ash (%)', field: 'rejectAsh' },
-                    { label: 'Conc Ash (%)', field: 'concAsh' },
+                    { label: 'CR (%)', field: 'cr' },
+                    { label: 'Reject Ash (%)', field: 'reject_ash' },
+                    { label: 'Conc Ash (%)', field: 'conc_ash' },
                   ].map(item => (
                     <div key={item.field} className="space-y-1">
                       <label className="text-[9px] font-black text-slate-400 uppercase ml-2">{item.label}</label>
@@ -422,11 +367,12 @@ const DFPResults: React.FC<DFPResultsProps> = ({ onSaveQualityReport, qualityRep
                   </div>
                 </div>
                 
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                   {[
                     { label: 'Yield (%)', field: 'yield' },
-                    { label: 'Reject Ash (%)', field: 'rejectAsh' },
-                    { label: 'Conc Ash (%)', field: 'concAsh' },
+                    { label: 'CR (%)', field: 'cr' },
+                    { label: 'Reject Ash (%)', field: 'reject_ash' },
+                    { label: 'Conc Ash (%)', field: 'conc_ash' },
                   ].map(item => (
                     <div key={item.field} className="space-y-1">
                       <label className="text-[9px] font-black text-slate-400 uppercase ml-2">{item.label}</label>
@@ -461,10 +407,11 @@ const DFPResults: React.FC<DFPResultsProps> = ({ onSaveQualityReport, qualityRep
                 </div>
               </div>
               
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                 {[
                   { label: 'Product Ash (%)', field: 'conc_ash' },
                   { label: 'Yield (%)', field: 'yield' },
+                  { label: 'CR (%)', field: 'cr' },
                   { label: 'Tail Ash (%)', field: 'reject_ash' },
                 ].map(item => (
                   <div key={item.field} className="space-y-1">

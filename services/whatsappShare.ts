@@ -11,6 +11,8 @@ export const formatQualityReportForWhatsApp = (report: QualityReport): string =>
   
   const categoryLabels: Record<QualityCategory, string> = {
     'DFP2': 'DFP2 - PLANTAS C/D',
+    'DFP2_C': 'DFP2 - PLANTA C',
+    'DFP2_D': 'DFP2 - PLANTA D',
     'COLUNAS_D': 'COLUNAS D',
     'HUMIDADE_PLY': 'HUMIDADE E PLY'
   };
@@ -20,19 +22,16 @@ export const formatQualityReportForWhatsApp = (report: QualityReport): string =>
   message += `📅 DATA: ${dateStr} | 🕒 HORA: ${timeStr}\n`;
   message += `🔄 TURNO: ${report.turno.toUpperCase()} | 👥 TURMA: ${report.turma} | 👷 OPERADOR: ${report.operator.toUpperCase()}\n\n`;
 
-  if (report.category === 'DFP2') {
-    if (report.dfp2_c_yield || report.dfp2_c_reject_ash || report.dfp2_c_conc_ash) {
-      message += `*PLANTA C*\n`;
-      message += `📈 YIELD: ${report.dfp2_c_yield}% \n`;
-      message += `📉 REJECT ASH: ${report.dfp2_c_reject_ash}% \n`;
-      message += `💎 CONC ASH: ${report.dfp2_c_conc_ash}% \n\n`;
-    }
-    if (report.dfp2_d_yield || report.dfp2_d_reject_ash || report.dfp2_d_conc_ash) {
-      message += `*PLANTA D*\n`;
-      message += `📈 YIELD: ${report.dfp2_d_yield}% \n`;
-      message += `📉 REJECT ASH: ${report.dfp2_d_reject_ash}% \n`;
-      message += `💎 CONC ASH: ${report.dfp2_d_conc_ash}% \n`;
-    }
+  if (report.category === 'DFP2_C') {
+    message += `📈 YIELD: ${report.dfp2_c_yield}% \n`;
+    message += `📉 REJECT ASH: ${report.dfp2_c_reject_ash}% \n`;
+    message += `💎 CONC ASH: ${report.dfp2_c_conc_ash}% \n`;
+    message += `⚙️ CR: ${report.dfp2_c_cr}% \n`;
+  } else if (report.category === 'DFP2_D') {
+    message += `📈 YIELD: ${report.dfp2_d_yield}% \n`;
+    message += `📉 REJECT ASH: ${report.dfp2_d_reject_ash}% \n`;
+    message += `💎 CONC ASH: ${report.dfp2_d_conc_ash}% \n`;
+    message += `⚙️ CR: ${report.dfp2_d_cr}% \n`;
   } else if (report.category === 'COLUNAS_D') {
     message += `💎 PRODUCT ASH: ${report.colunas_d_conc_ash}% \n`;
     message += `📈 YIELD: ${report.colunas_d_yield}% \n`;

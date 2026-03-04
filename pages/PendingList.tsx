@@ -1,6 +1,6 @@
 
-import React, { useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import React, { useState, useEffect } from 'react';
+import { useSearchParams, useNavigate } from 'react-router-dom';
 import { 
   Search, 
   CheckCircle2, 
@@ -21,13 +21,15 @@ import {
   ShieldAlert,
   ArrowDownToLine,
   ExternalLink,
-  ClipboardList
+  ClipboardList,
+  AlertCircle
 } from 'lucide-react';
 import { PendingItem, Area, Turma, Discipline } from '../types';
 import { formatSummaryForWhatsApp, copyToClipboard } from '../services/whatsappShare';
 import { getCurrentShiftInfo } from '../services/shiftService';
 import { exportShiftReport, exportToExcel } from '../services/excelExport';
 import { exportShiftReportPDF, exportAuditPDF } from '../services/pdfExport';
+import { fetchEmployees, Employee } from '../services/employeeService';
 
 interface PendingListProps {
   pendingItems: PendingItem[];
@@ -39,6 +41,7 @@ interface PendingListProps {
 
 const PendingList: React.FC<PendingListProps> = ({ pendingItems = [], onResolve, onRefresh, isRefreshing }) => {
   const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
   
   const queryArea = searchParams.get('area');
   const queryStatus = searchParams.get('status');
@@ -52,6 +55,16 @@ const PendingList: React.FC<PendingListProps> = ({ pendingItems = [], onResolve,
   const [resolvingId, setResolvingId] = useState<string | null>(null);
   const [resolverName, setResolverName] = useState('');
   const [copyFeedback, setCopyFeedback] = useState(false);
+  const [employees, setEmployees] = useState<Employee[]>([]);
+  const [showResolverSuggestions, setShowResolverSuggestions] = useState(false);
+
+  useEffect(() => {
+    const loadEmployees = async () => {
+      const data = await fetchEmployees();
+      setEmployees(data);
+    };
+    loadEmployees();
+  }, []);
 
   const filteredItems = pendingItems.filter(item => {
     if (!item) return false;
@@ -63,6 +76,10 @@ const PendingList: React.FC<PendingListProps> = ({ pendingItems = [], onResolve,
     
     return matchesSearch && matchesArea && matchesStatus && matchesTurma;
   });
+
+  const filteredEmployees = employees.filter(emp => 
+    emp.nome.toLowerCase().includes(resolverName.toLowerCase())
+  );
 
   const disciplineConfig: Record<Discipline, { icon: React.ReactNode, color: string, bg: string }> = {
     'MECÂNICA': { icon: <Wrench size={12} />, color: 'text-orange-600', bg: 'bg-orange-50 border-orange-200' },
@@ -77,6 +94,18 @@ const PendingList: React.FC<PendingListProps> = ({ pendingItems = [], onResolve,
     if (success) {
       setCopyFeedback(true);
       setTimeout(() => setCopyFeedback(false), 2000);
+    }
+  };
+
+  const handleGenerateTLReport = async () => {
+    const shiftInfo = getCurrentShiftInfo();
+    const tlItems = pendingItems.filter(item => item.turma === shiftInfo.turma && item.status === 'aberto');
+    const text = formatSummaryForWhatsApp(tlItems, `Relatório de Pendências - Turma ${shiftInfo.turma} - Turno ${shiftInfo.turno}`);
+    const success = await copyToClipboard(text);
+    if (success) {
+      setCopyFeedback(true);
+      setTimeout(() => setCopyFeedback(false), 2000);
+      alert(`Relatório da Turma ${shiftInfo.turma} copiado!`);
     }
   };
 
@@ -110,8 +139,33 @@ const PendingList: React.FC<PendingListProps> = ({ pendingItems = [], onResolve,
                 <Lock size={12} /> Turma Logada: <span className="text-emerald-600">Equipe {getCurrentShiftInfo().turma}</span>
               </p>
             </div>
-            <div className="space-y-4">
-              <input type="text" placeholder="SEU NOME..." value={resolverName || ''} onChange={(e) => setResolverName(e.target.value)} className="w-full p-5 bg-slate-50 border-2 border-slate-100 rounded-2xl font-black text-center uppercase outline-none focus:border-emerald-500 transition-all shadow-inner" />
+            <div className="space-y-4 relative">
+              <input 
+                type="text" 
+                placeholder="SEU NOME..." 
+                value={resolverName || ''} 
+                onChange={(e) => { setResolverName(e.target.value); setShowResolverSuggestions(true); }} 
+                onFocus={() => setShowResolverSuggestions(true)}
+                className="w-full p-5 bg-slate-50 border-2 border-slate-100 rounded-2xl font-black text-center uppercase outline-none focus:border-emerald-500 transition-all shadow-inner" 
+              />
+              {showResolverSuggestions && resolverName && filteredEmployees.length > 0 && (
+                <div className="absolute z-[120] w-full bg-white border-2 border-slate-100 rounded-2xl shadow-xl mt-1 max-h-48 overflow-y-auto">
+                  {filteredEmployees.map(emp => (
+                    <button 
+                      key={emp.matricula} 
+                      type="button" 
+                      onClick={() => { 
+                        setResolverName(emp.nome); 
+                        setShowResolverSuggestions(false); 
+                      }} 
+                      className="w-full text-left px-6 py-3 hover:bg-emerald-50 border-b border-slate-50 last:border-0 transition-colors"
+                    >
+                      <div className="text-[10px] font-black uppercase text-slate-700">{emp.nome}</div>
+                      <div className="text-[8px] font-bold text-slate-400 uppercase tracking-widest">{emp.funcao} • {emp.equipe}</div>
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
             <div className="flex gap-3">
               <button onClick={() => setResolvingId(null)} className="flex-1 py-5 border-2 border-slate-100 rounded-2xl font-black uppercase text-slate-400 text-[10px] tracking-widest">Cancelar</button>
@@ -125,11 +179,20 @@ const PendingList: React.FC<PendingListProps> = ({ pendingItems = [], onResolve,
         <div>
           <h1 className="text-2xl font-black text-slate-900 uppercase tracking-tight">Painel de Pendências</h1>
         </div>
+        <button 
+          onClick={() => navigate('/manual-pending')}
+          className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-2xl font-black uppercase text-[10px] tracking-widest flex items-center gap-2 shadow-lg shadow-blue-600/20 transition-all active:scale-95"
+        >
+          <AlertCircle size={16} /> Registrar Pendência Manual
+        </button>
       </div>
 
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
         <button onClick={handleCopySummary} className={`flex items-center justify-center gap-2 py-4 rounded-2xl font-black text-[9px] uppercase shadow-lg border-2 transition-all active:scale-95 ${copyFeedback ? 'bg-emerald-500 text-white border-emerald-500' : 'bg-white text-slate-900 border-slate-100 hover:border-blue-500'}`}>
           <Copy size={16} /> Copiar Resumo
+        </button>
+        <button onClick={handleGenerateTLReport} className="flex items-center justify-center gap-2 py-4 bg-indigo-600 text-white rounded-2xl font-black text-[9px] uppercase shadow-lg border-2 border-transparent hover:bg-indigo-700 transition-all active:scale-95">
+          <ClipboardList size={16} /> Relatório TL (Turno)
         </button>
         <button onClick={() => exportToExcel(filteredItems, 'Relatorio_Turno')} className="flex items-center justify-center gap-2 py-4 bg-emerald-600 text-white rounded-2xl font-black text-[9px] uppercase shadow-lg border-2 border-transparent hover:bg-emerald-700 transition-all active:scale-95">
           <FileSpreadsheet size={16} /> Planilha Turno

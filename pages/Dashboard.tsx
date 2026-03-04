@@ -20,7 +20,7 @@ import {
   ExternalLink,
   AlertCircle
 } from 'lucide-react';
-import { Report, PendingItem, Area, Turma, QualityReport, OperationalEvent } from '../types';
+import { Report, PendingItem, Area, Turma, QualityReport, OperationalEvent, QualityCategory } from '../types';
 import { getScaleForDate, getStatusForTurma, getCurrentShiftInfo } from '../services/shiftService';
 
 interface DashboardProps {
@@ -111,41 +111,51 @@ const Dashboard: React.FC<DashboardProps> = ({ reports, pendingItems, qualityRep
 
   const latestQuality = [...qualityReports].sort((a, b) => b.timestamp - a.timestamp)[0];
 
-  const getQualityStatus = (section: 'dfp2C' | 'dfp2D' | 'colunaD' | 'humidade') => {
-    if (!latestQuality) return { color: 'bg-slate-100', label: 'Sem dados', values: '-' };
+  const getQualityStatus = (report: QualityReport | undefined) => {
+    if (!report) return { color: 'bg-slate-100', label: 'Sem dados', values: '-' };
 
-    if (section === 'dfp2C') {
-      const yld = latestQuality.dfp2_c_yield || 0;
-      const ra = latestQuality.dfp2_c_reject_ash || 0;
-      const ca = latestQuality.dfp2_c_conc_ash || 0;
-      const vals = `YLD ${yld}% | REJ ${ra}% | CONC ${ca}%`;
+    if (report.category === 'DFP2') {
+      // Caso genérico ou fallback, mas agora usamos categorias específicas
+      const vals = `YLD ${(report.dfp2_c_yield || 0).toFixed(1)}% | REJ ${(report.dfp2_c_reject_ash || 0).toFixed(1)}%`;
+      return { color: 'bg-emerald-500', label: 'Normal', values: vals };
+    }
+
+    if (report.category === 'DFP2_C') {
+      const yld = report.dfp2_c_yield || 0;
+      const ra = report.dfp2_c_reject_ash || 0;
+      const ca = report.dfp2_c_conc_ash || 0;
+      const cr = report.dfp2_c_cr || 0;
+      const vals = `📈 YLD ${yld.toFixed(1)}% | 📉 REJ ${ra.toFixed(1)}% | 💎 CONC ${ca.toFixed(1)}% | CR ${cr.toFixed(1)}%`;
       if (yld < 35 || ra < 30) return { color: 'bg-red-500', label: 'Alerta Crítico', values: vals };
       if (ca > 11) return { color: 'bg-amber-500', label: 'Atenção', values: vals };
       return { color: 'bg-emerald-500', label: 'Normal', values: vals };
     }
 
-    if (section === 'dfp2D') {
-      const yld = latestQuality.dfp2_d_yield || 0;
-      const ra = latestQuality.dfp2_d_reject_ash || 0;
-      const ca = latestQuality.dfp2_d_conc_ash || 0;
-      const vals = `YLD ${yld}% | REJ ${ra}% | CONC ${ca}%`;
+    if (report.category === 'DFP2_D') {
+      const yld = report.dfp2_d_yield || 0;
+      const ra = report.dfp2_d_reject_ash || 0;
+      const ca = report.dfp2_d_conc_ash || 0;
+      const cr = report.dfp2_d_cr || 0;
+      const vals = `📈 YLD ${yld.toFixed(1)}% | 📉 REJ ${ra.toFixed(1)}% | 💎 CONC ${ca.toFixed(1)}% | CR ${cr.toFixed(1)}%`;
       if (yld < 35 || ra < 30) return { color: 'bg-red-500', label: 'Alerta Crítico', values: vals };
       if (ca > 11) return { color: 'bg-amber-500', label: 'Atenção', values: vals };
       return { color: 'bg-emerald-500', label: 'Normal', values: vals };
     }
 
-    if (section === 'colunaD') {
-      const pa = latestQuality.colunas_d_conc_ash || 0;
-      const yld = latestQuality.colunas_d_yield || 0;
-      const ta = latestQuality.colunas_d_reject_ash || 0;
-      const vals = `YLD ${yld}% | REJ ${ta}% | CONC ${pa}%`;
+    if (report.category === 'COLUNAS_D') {
+      const pa = report.colunas_d_conc_ash || 0;
+      const yld = report.colunas_d_yield || 0;
+      const ta = report.colunas_d_reject_ash || 0;
+      const cr = report.colunas_d_cr || 0;
+      const vals = `💎 PRODUCT ASH ${pa}% | 📈 YIELD ${yld}% | 📉 TAIL ASH ${ta}% | CR ${cr}%`;
       if (pa > 11 || yld < 55 || ta < 45) return { color: 'bg-red-500', label: 'Fora de Spec', values: vals };
       return { color: 'bg-emerald-500', label: 'Normal', values: vals };
     }
 
-    if (section === 'humidade') {
-      const tm = latestQuality.humidade_fundo || 0;
-      const vals = `TM ${tm}%`;
+    if (report.category === 'HUMIDADE_PLY') {
+      const tm = report.humidade_fundo || 0;
+      const ply = report.ply || 'N/A';
+      const vals = `🏷️ PLY: ${ply} | 💧 HUMIDADE FUNDO: ${tm}%`;
       if (tm > 14.0) return { color: 'bg-red-500', label: 'Muito Alta', values: vals };
       if (tm > 13.5) return { color: 'bg-amber-500', label: 'Acima Target', values: vals };
       if (tm < 12.0) return { color: 'bg-blue-500', label: 'Muito Seco', values: vals };
@@ -176,24 +186,10 @@ const Dashboard: React.FC<DashboardProps> = ({ reports, pendingItems, qualityRep
         <div>
           <div className="flex items-center gap-2 mb-1">
             <h1 className="text-3xl font-black text-slate-900 tracking-tighter uppercase">Painel de Controle</h1>
-            <span className="bg-blue-100 text-blue-700 px-2 py-0.5 rounded text-[8px] font-black uppercase tracking-widest border border-blue-200">REL_03_2026</span>
-            <span className="bg-rose-100 text-rose-700 px-2 py-0.5 rounded text-[8px] font-black uppercase tracking-widest border border-rose-200">PEND_GERAL</span>
           </div>
           <p className="text-slate-500 font-bold uppercase text-[10px] tracking-widest">Gestão de Checklists e Ativos em Tempo Real</p>
         </div>
         <div className="flex gap-2">
-          <button 
-            onClick={handleRestoreDefault}
-            className="bg-slate-200 hover:bg-slate-300 text-slate-700 px-4 py-3 rounded-2xl font-black uppercase text-[9px] tracking-widest flex items-center gap-2 transition-all active:scale-95"
-          >
-            <RotateCw size={14} /> Restaurar Padrão
-          </button>
-          <button 
-            onClick={handleClearCache}
-            className="bg-rose-100 hover:bg-rose-200 text-rose-600 px-4 py-3 rounded-2xl font-black uppercase text-[9px] tracking-widest flex items-center gap-2 transition-all active:scale-95"
-          >
-            <Zap size={14} /> Apagar Cache
-          </button>
           <button 
             onClick={() => navigate('/manual-pending')}
             className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-2xl font-black uppercase text-[10px] tracking-widest flex items-center gap-2 shadow-lg shadow-blue-600/20 transition-all active:scale-95"
@@ -258,11 +254,11 @@ const Dashboard: React.FC<DashboardProps> = ({ reports, pendingItems, qualityRep
       </button>
 
       {/* Semáforo de Qualidade - Horizontal Full Width */}
-      <div className="bg-slate-900 rounded-[2.5rem] p-8 text-white shadow-xl border-4 border-slate-800">
-        <div className="flex flex-col md:flex-row md:items-center justify-between mb-8 gap-4">
+      <div className="bg-slate-900 rounded-2xl p-5 text-white shadow-lg border-2 border-slate-800">
+        <div className="flex flex-col md:flex-row md:items-center justify-between mb-5 gap-4">
           <div>
-            <h3 className="text-xl font-black uppercase tracking-tighter">Semáforo de Qualidade</h3>
-            <p className="text-slate-400 text-[9px] font-bold uppercase tracking-widest mt-1">Status de Produção e Qualidade em Tempo Real</p>
+            <h3 className="text-lg font-black uppercase tracking-tighter">Semáforo de Qualidade</h3>
+            <p className="text-slate-400 text-[8px] font-bold uppercase tracking-widest mt-1">Status de Produção e Qualidade em Tempo Real</p>
           </div>
           <div className="flex items-center gap-4">
             {latestQuality?.ply && (
@@ -270,10 +266,6 @@ const Dashboard: React.FC<DashboardProps> = ({ reports, pendingItems, qualityRep
                 PLY: {latestQuality.ply}
               </div>
             )}
-            <div className="px-3 py-1.5 bg-slate-800 rounded-xl text-[9px] font-black uppercase tracking-widest text-slate-400 border border-slate-700 flex items-center gap-2">
-              {latestQuality?.synced ? <Cloud size={10} className="text-emerald-500" /> : <CloudOff size={10} className="text-amber-500" />}
-              Último Registro: {latestQuality ? new Date(latestQuality.timestamp).toLocaleTimeString('pt-BR', { hour12: false }) : '--:--'}
-            </div>
             <button 
               onClick={() => navigate('/dfp')}
               className="px-6 py-2 bg-white text-slate-900 rounded-xl font-black uppercase text-[10px] tracking-widest hover:bg-blue-500 hover:text-white transition-all active:scale-95 shadow-lg"
@@ -283,29 +275,45 @@ const Dashboard: React.FC<DashboardProps> = ({ reports, pendingItems, qualityRep
           </div>
         </div>
         
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="flex flex-col gap-3">
           {[
-            { id: 'dfp2C', label: 'DFP 2 (C)' },
-            { id: 'dfp2D', label: 'DFP 2 (D)' },
-            { id: 'colunaD', label: 'Colunas D' },
-            { id: 'humidade', label: 'Humidade' },
+            { id: 'DFP2_C', label: 'DFP2 - PLANTA C' },
+            { id: 'DFP2_D', label: 'DFP2 - PLANTA D' },
+            { id: 'COLUNAS_D', label: 'COLUNAS D' },
+            { id: 'HUMIDADE_PLY', label: 'HUMIDADE' },
           ].map(section => {
-            const status = getQualityStatus(section.id as any);
+            const latestForSection = [...qualityReports]
+              .filter(qr => {
+                if (section.id === 'DFP2_C') return (qr.category === 'DFP2_C') || (qr.category === 'DFP2' && qr.dfp2_c_cr !== undefined);
+                if (section.id === 'DFP2_D') return (qr.category === 'DFP2_D') || (qr.category === 'DFP2' && qr.dfp2_d_cr !== undefined);
+                if (section.id === 'COLUNAS_D') return (qr.category === 'COLUNAS_D') || (qr.category === 'DFP2' && qr.colunas_d_cr !== undefined);
+                if (section.id === 'HUMIDADE_PLY') return (qr.category === 'HUMIDADE_PLY') || (qr.category === 'DFP2' && qr.humidade_fundo !== undefined);
+                return qr.category === section.id;
+              })
+              .sort((a, b) => b.timestamp - a.timestamp)[0];
+            
+            const reportToProcess = latestForSection ? { ...latestForSection, category: section.id as QualityCategory } : undefined;
+            const status = getQualityStatus(reportToProcess);
+            
             return (
-              <div key={section.id} className="flex flex-col bg-slate-800/40 p-5 rounded-3xl border border-slate-800 hover:border-slate-600 transition-colors group">
-                <div className="flex items-center justify-between mb-3">
-                  <div className="flex items-center gap-3">
-                    <div className={`w-3.5 h-3.5 rounded-full ${status.color} shadow-[0_0_15px_rgba(0,0,0,0.5)] animate-pulse`} />
-                    <span className="text-[11px] font-black uppercase tracking-wider text-slate-200">{section.label}</span>
+              <div key={section.id} className="flex items-center justify-between bg-slate-800/40 p-3 rounded-xl border border-slate-800 hover:border-slate-600 transition-colors group">
+                <div className="flex items-center gap-3">
+                  <div className={`w-3 h-3 rounded-full ${status.color} shadow-[0_0_10px_rgba(0,0,0,0.5)] animate-pulse`} />
+                  <div>
+                    <span className="text-[10px] font-black uppercase tracking-wider text-slate-200 block">{section.label}</span>
+                    <span className="text-[8px] font-black text-slate-500 uppercase tracking-widest">{status.label}</span>
                   </div>
-                  <span className="text-[8px] font-black text-slate-500 uppercase tracking-widest group-hover:text-slate-300 transition-colors">{status.label}</span>
                 </div>
-                <div className="text-[10px] font-black text-white tracking-tight leading-relaxed">
+                
+                <div className="text-[9px] font-black text-white tracking-tight leading-relaxed text-right flex flex-wrap gap-1.5 justify-end">
                   {status.values.split(' | ').map((v, i) => (
-                    <span key={i} className="inline-block mr-2 last:mr-0">
-                      {v}{i < status.values.split(' | ').length - 1 && <span className="text-slate-600 ml-2">|</span>}
+                    <span key={i} className="bg-slate-700/50 px-2 py-0.5 rounded">
+                      {v}
                     </span>
                   ))}
+                  <span className="text-slate-500 text-[8px] block mt-0.5 w-full">
+                    Último: {reportToProcess ? new Date(reportToProcess.timestamp).toLocaleTimeString('pt-BR', { hour12: false }) : '--:--'}
+                  </span>
                 </div>
               </div>
             );
@@ -343,7 +351,7 @@ const Dashboard: React.FC<DashboardProps> = ({ reports, pendingItems, qualityRep
         <div className={`p-6 rounded-[2.5rem] border-4 transition-all flex flex-col justify-between ${
           unsyncedCount > 0 
             ? 'bg-amber-50 border-amber-200 shadow-xl shadow-amber-200/20' 
-            : 'bg-emerald-50 border-emerald-200 shadow-xl shadow-emerald-200/20'
+            : 'bg-emerald-50 border-emerald-200 shadow-xl shadow-amber-200/20'
         }`}>
           <div className="flex justify-between items-start mb-4">
             <div className={`w-12 h-12 rounded-xl flex items-center justify-center ${

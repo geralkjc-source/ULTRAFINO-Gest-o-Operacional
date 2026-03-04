@@ -10,10 +10,13 @@ import {
   ShieldAlert,
   Wrench,
   Cpu,
-  UserCog
+  UserCog,
+  Search
 } from 'lucide-react';
 import { Area, Turma, Turno, Discipline, PendingItem } from '../types';
 import { getCurrentShiftInfo } from '../services/shiftService';
+import { CHECKLIST_TEMPLATES } from '../constants';
+import { fetchEmployees, Employee } from '../services/employeeService';
 
 interface ManualPendingFormProps {
   onAddManualPending: (pending: PendingItem) => void;
@@ -22,8 +25,17 @@ interface ManualPendingFormProps {
 const ManualPendingForm: React.FC<ManualPendingFormProps> = ({ onAddManualPending }) => {
   const navigate = useNavigate();
   const [detectedScale, setDetectedScale] = useState<{ turma: Turma; turno: Turno }>(getCurrentShiftInfo());
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const [showOperatorSuggestions, setShowOperatorSuggestions] = useState(false);
+  const [employees, setEmployees] = useState<Employee[]>([]);
 
   useEffect(() => {
+    const loadEmployees = async () => {
+      const data = await fetchEmployees();
+      setEmployees(data);
+    };
+    loadEmployees();
+
     const timer = setInterval(() => {
       setDetectedScale(getCurrentShiftInfo());
     }, 60000);
@@ -39,9 +51,24 @@ const ManualPendingForm: React.FC<ManualPendingFormProps> = ({ onAddManualPendin
     discipline: 'OPERAÇÃO' as Discipline,
   });
 
+  const getAvailableTags = () => {
+    const templates = CHECKLIST_TEMPLATES[pendingData.area] || [];
+    return templates.filter(item => !item.startsWith('SECTION:'));
+  };
+
+  const filteredTags = getAvailableTags().filter(tag => 
+    tag.toLowerCase().includes(pendingData.tag.toLowerCase())
+  );
+
+  const filteredEmployees = employees.filter(emp => 
+    emp.nome.toLowerCase().includes(pendingData.operator.toLowerCase())
+  );
+
   const handlePendingChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
     setPendingData(prev => ({ ...prev, [name]: value }));
+    if (name === 'tag') setShowSuggestions(true);
+    if (name === 'operator') setShowOperatorSuggestions(true);
   };
 
   const handlePendingSubmit = (e: React.FormEvent) => {
@@ -88,7 +115,36 @@ const ManualPendingForm: React.FC<ManualPendingFormProps> = ({ onAddManualPendin
         {/* Identificação */}
         <div className="bg-white p-8 rounded-[2.5rem] border-2 border-slate-100 shadow-sm space-y-6">
           <h2 className="text-[11px] font-black text-slate-900 uppercase tracking-[0.2em] flex items-center gap-2"><UserIcon size={16} className="text-blue-500" /> Identificação</h2>
-          <input type="text" name="operator" placeholder="Seu Nome" value={pendingData.operator || ''} onChange={handlePendingChange} className="w-full px-6 py-4 bg-slate-50 border-2 border-slate-100 rounded-2xl outline-none font-black uppercase text-sm focus:border-blue-500 focus:bg-white transition-all shadow-inner" required />
+          <div className="relative">
+            <input 
+              type="text" 
+              name="operator" 
+              placeholder="Seu Nome" 
+              value={pendingData.operator || ''} 
+              onChange={handlePendingChange} 
+              onFocus={() => setShowOperatorSuggestions(true)}
+              className="w-full px-6 py-4 bg-slate-50 border-2 border-slate-100 rounded-2xl outline-none font-black uppercase text-sm focus:border-blue-500 focus:bg-white transition-all shadow-inner" 
+              required 
+            />
+            {showOperatorSuggestions && pendingData.operator && filteredEmployees.length > 0 && (
+              <div className="absolute z-20 w-full bg-white border-2 border-slate-100 rounded-2xl shadow-xl mt-1 max-h-48 overflow-y-auto">
+                {filteredEmployees.map(emp => (
+                  <button 
+                    key={emp.matricula} 
+                    type="button" 
+                    onClick={() => { 
+                      setPendingData(prev => ({ ...prev, operator: emp.nome })); 
+                      setShowOperatorSuggestions(false); 
+                    }} 
+                    className="w-full text-left px-6 py-3 hover:bg-blue-50 border-b border-slate-50 last:border-0 transition-colors"
+                  >
+                    <div className="text-[10px] font-black uppercase text-slate-700">{emp.nome}</div>
+                    <div className="text-[8px] font-bold text-slate-400 uppercase tracking-widest">{emp.funcao} • {emp.equipe}</div>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
           
           {/* PAINEL DE ESCALA AUTOMÁTICA */}
           <div className="space-y-3 pt-4">
@@ -127,9 +183,21 @@ const ManualPendingForm: React.FC<ManualPendingFormProps> = ({ onAddManualPendin
             </select>
           </div>
 
-          <div className="space-y-2">
+          <div className="space-y-2 relative">
             <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest block">TAG / Ativo</label>
-            <input type="text" name="tag" placeholder="Ex: 06C-VP-101" value={pendingData.tag || ''} onChange={handlePendingChange} className="w-full px-6 py-4 bg-slate-50 border-2 border-slate-100 rounded-2xl outline-none font-black uppercase text-sm focus:border-blue-500 focus:bg-white transition-all shadow-inner" required />
+            <div className="relative">
+              <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+              <input type="text" name="tag" placeholder="Ex: 06C-VP-101" value={pendingData.tag || ''} onChange={handlePendingChange} onFocus={() => setShowSuggestions(true)} className="w-full pl-12 pr-6 py-4 bg-slate-50 border-2 border-slate-100 rounded-2xl outline-none font-black uppercase text-sm focus:border-blue-500 focus:bg-white transition-all shadow-inner" required />
+            </div>
+            {showSuggestions && pendingData.tag && filteredTags.length > 0 && (
+              <div className="absolute z-10 w-full bg-white border-2 border-slate-100 rounded-2xl shadow-xl mt-1 max-h-48 overflow-y-auto">
+                {filteredTags.map(tag => (
+                  <button key={tag} type="button" onClick={() => { setPendingData(prev => ({ ...prev, tag })); setShowSuggestions(false); }} className="w-full text-left px-6 py-3 hover:bg-blue-50 text-[10px] font-black uppercase text-slate-700 transition-colors">
+                    {tag}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
 
           <div className="space-y-2">

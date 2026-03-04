@@ -1,8 +1,8 @@
 
 import { Report, PendingItem, Area, QualityReport, OperationalEvent } from '../types';
 
-// Endpoint oficial v3.2
-export const DEFAULT_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwPoZk1y0cw4gZtQRMAR9ix0ZvMbgeqZA7fVveIb0lKrBteW06AqYqh2s20yQynmVEo/exec'; 
+// Endpoint oficial v4.0
+export const DEFAULT_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwD-nOQcYQkk__x5ZBuX2dE6PsQopSAZyrXyDOTlA13Re1e7Km6eL88oby_HcSuLHQ/exec'; 
 export const MASTER_SHEET_URL = 'https://docs.google.com/spreadsheets/d/1HjhTUldjn8Kk9mVF8GMw7ZQoPbqspMhqGV7OM5TPCTY/edit';
 
 export interface SyncResponse {
@@ -68,18 +68,18 @@ export const testScriptConnection = async (url: string): Promise<{success: boole
     if (!response) return { success: false, message: "Script Inacessível (CORS/Rede)." };
     
     const text = await response.text();
-    const isV32 = text.includes("v3.2") || text.includes("v3");
+    const isV4 = text.includes("v4") || text.includes("v3.2") || text.includes("v3");
     
     // Teste 2: Verificar se as ações de leitura estão respondendo (opcional mas útil)
     const testAction = await fetch(`${url}?action=getStats&t=${Date.now()}`).catch(() => null);
     const actionsOk = testAction && testAction.ok;
 
-    if (isV32 && actionsOk) {
-      return { success: true, message: "Protocolo Vulcan v3.2 Totalmente Ativo!" };
-    } else if (isV32) {
-      return { success: true, message: "Script v3.2 Detectado (Ações Limitadas)." };
+    if (isV4 && actionsOk) {
+      return { success: true, message: "Protocolo Vulcan v4.0 Totalmente Ativo!" };
+    } else if (isV4) {
+      return { success: true, message: "Script v4.0 Detectado (Ações Limitadas)." };
     } else {
-      return { success: false, message: "Script v3.2 Requerido.", details: "O script atual parece ser uma versão antiga." };
+      return { success: false, message: "Script v4.0 Requerido.", details: "O script atual parece ser uma versão antiga ou incompatível." };
     }
   } catch (error) { 
     return { success: false, message: "Falha de conexão.", details: "Verifique se o script está publicado como 'Qualquer pessoa'." }; 
@@ -111,7 +111,7 @@ export const syncToGoogleSheets = async (
 
     const payload = {
       action: "sync",
-      version: "3.2_operational",
+      version: "4.0",
       mes_referencia: mesRef,
       reports: (reports || []).map(r => {
         const fmt = formatForSheet(r.timestamp);
@@ -153,6 +153,7 @@ export const syncToGoogleSheets = async (
           id: qr.id,
           data: fmt.date,
           hora: fmt.time,
+          categoria: qr.category,
           operador: sanitize(qr.operator),
           turma: qr.turma,
           turno: qr.turno,
@@ -188,7 +189,8 @@ export const syncToGoogleSheets = async (
           funcao: sanitize(oe.collaboratorRole),
           autor: sanitize(oe.authorName),
           autor_matricula: oe.authorMatricula,
-          descricao: sanitize(oe.description)
+          descricao: sanitize(oe.description),
+          detalhes: oe.details ? JSON.stringify(oe.details) : ''
         };
       })
     };
@@ -202,6 +204,8 @@ export const fetchCloudItems = async (scriptUrl: string): Promise<PendingItem[]>
   try {
     const response = await fetch(`${scriptUrl}?action=getPendencies&t=${Date.now()}`);
     if (!response.ok) return [];
+    const contentType = response.headers.get("content-type");
+    if (!contentType || !contentType.includes("application/json")) return [];
     const data = await response.json();
     if (!Array.isArray(data)) return [];
     
@@ -230,7 +234,7 @@ export const fetchCloudItems = async (scriptUrl: string): Promise<PendingItem[]>
         timestamp: sheetTimestamp || Date.now(),
         synced: true
       };
-    });
+    }).sort((a, b) => b.timestamp - a.timestamp);
   } catch (error) { return []; }
 };
 
@@ -239,6 +243,8 @@ export const fetchCloudReports = async (scriptUrl: string): Promise<Report[]> =>
   try {
     const response = await fetch(`${scriptUrl}?action=getReports&t=${Date.now()}`);
     if (!response.ok) return [];
+    const contentType = response.headers.get("content-type");
+    if (!contentType || !contentType.includes("application/json")) return [];
     const data = await response.json();
     if (!Array.isArray(data)) return [];
     return data.map((r: any): Report => {
@@ -266,7 +272,7 @@ export const fetchCloudReports = async (scriptUrl: string): Promise<Report[]> =>
         generalObservations: sanitize(r.observacoes || r.obs),
         synced: true
       };
-    });
+    }).sort((a, b) => b.timestamp - a.timestamp);
   } catch (error) { return []; }
 };
 
@@ -275,6 +281,8 @@ export const fetchCloudData = async (scriptUrl: string): Promise<CloudStats | nu
   try {
     const response = await fetch(`${scriptUrl}?action=getStats&t=${Date.now()}`).catch(() => null);
     if (!response || !response.ok) return null;
+    const contentType = response.headers.get("content-type");
+    if (!contentType || !contentType.includes("application/json")) return null;
     return await response.json();
   } catch (error) { return null; }
 };
@@ -284,41 +292,133 @@ export const fetchCloudQualityReports = async (scriptUrl: string): Promise<Quali
   try {
     const response = await fetch(`${scriptUrl}?action=getQualityReports&t=${Date.now()}`);
     if (!response.ok) return [];
+    const contentType = response.headers.get("content-type");
+    if (!contentType || !contentType.includes("application/json")) return [];
     const data = await response.json();
     if (!Array.isArray(data)) return [];
 
-    return data.map((qr: any): QualityReport => {
+    // 1. Parse all rows into a temporary structure, keeping only non-empty fields
+    const allReports = data.map((qr: any) => {
       const dateRaw = qr.data || '';
       const hourRaw = qr.hora || '12:00';
       const sheetTimestamp = parseDateFromCloud(`${dateRaw} ${hourRaw}`);
 
-      return {
-        id: qr.id || `qr-${Date.now()}-${Math.random()}`,
+      const report: any = {
         timestamp: sheetTimestamp || Date.now(),
+        category: (() => {
+          const cat = (qr.categoria || qr.category || 'DFP2');
+          if (cat === 'COLUNAS D' || cat === 'COLUNAS_D') return 'COLUNAS_D';
+          if (cat === 'HUMIDADE E PLY' || cat === 'HUMIDADE_PLY' || cat === 'HUMIDADE') return 'HUMIDADE_PLY';
+          
+          // Detecção por campos se a categoria for genérica (DFP2)
+          if (cat.includes('DFP2') || cat.includes('DFP 2') || cat === 'DFP2') {
+            // Se tiver campos de Colunas D, assume Colunas D
+            if (
+              (qr.colunas_d_cr !== undefined && qr.colunas_d_cr !== null && qr.colunas_d_cr !== '') ||
+              (qr.colunas_d_yield !== undefined && qr.colunas_d_yield !== null && qr.colunas_d_yield !== '')
+            ) return 'COLUNAS_D';
+
+            // Se tiver campos de Humidade, assume Humidade
+            if (
+              (qr.humidade_fundo !== undefined && qr.humidade_fundo !== null && qr.humidade_fundo !== '') ||
+              (qr.hum_fundo !== undefined && qr.hum_fundo !== null && qr.hum_fundo !== '') ||
+              (qr.ply !== undefined && qr.ply !== null && qr.ply !== '')
+            ) return 'HUMIDADE_PLY';
+
+            // Diferenciação DFP2 C vs D
+            if (
+              (qr.dfp2_c_cr !== undefined && qr.dfp2_c_cr !== null && qr.dfp2_c_cr !== '') ||
+              (qr.dfp2_c_yield !== undefined && qr.dfp2_c_yield !== null && qr.dfp2_c_yield !== '')
+            ) return 'DFP2_C';
+            
+            if (
+              (qr.dfp2_d_cr !== undefined && qr.dfp2_d_cr !== null && qr.dfp2_d_cr !== '') ||
+              (qr.dfp2_d_yield !== undefined && qr.dfp2_d_yield !== null && qr.dfp2_d_yield !== '')
+            ) return 'DFP2_D';
+          }
+          
+          return cat as any;
+        })(),
+        area: (qr.area || 'DFP 2') as Area,
         operator: sanitize(qr.operador),
         turma: (qr.turma || 'A') as any,
         turno: (qr.turno || 'MANHÃ') as any,
-        category: (qr.categoria || qr.category || 'DFP2') as any,
-        ply: sanitize(qr.ply),
-        dfp2_c_cr: qr.dfp2_c_cr || 0,
-        dfp2_c_yield: qr.dfp2_c_yield || 0,
-        dfp2_c_reject_ash: qr.dfp2_c_reject_ash || 0,
-        dfp2_c_conc_ash: qr.dfp2_c_conc_ash || 0,
-        dfp2_d_cr: qr.dfp2_d_cr || 0,
-        dfp2_d_yield: qr.dfp2_d_yield || 0,
-        dfp2_d_reject_ash: qr.dfp2_d_reject_ash || 0,
-        dfp2_d_conc_ash: qr.dfp2_d_conc_ash || 0,
-        colunas_d_cr: qr.colunas_d_cr || 0,
-        colunas_d_yield: qr.colunas_d_yield || 0,
-        colunas_d_reject_ash: qr.colunas_d_reject_ash || 0,
-        colunas_d_conc_ash: qr.colunas_d_conc_ash || 0,
-        humidade_fundo: qr.hum_fundo || qr.humidade_fundo || 0,
-        humidade_oversize: qr.hum_oversize || qr.humidade_oversize || 0,
-        humidade_concentrado: qr.hum_conc || qr.humidade_concentrado || 0,
-        generalObservations: sanitize(qr.obs),
+      };
+
+      // Only include fields if they have data
+      const fields = [
+        'ply', 'dfp2_c_cr', 'dfp2_c_yield', 'dfp2_c_reject_ash', 'dfp2_c_conc_ash',
+        'dfp2_d_cr', 'dfp2_d_yield', 'dfp2_d_reject_ash', 'dfp2_d_conc_ash',
+        'colunas_d_cr', 'colunas_d_yield', 'colunas_d_reject_ash', 'colunas_d_conc_ash',
+        'humidade_fundo', 'humidade_oversize', 'humidade_concentrado'
+      ];
+
+      fields.forEach(field => {
+        let val = qr[field];
+        
+        // Fallback para nomes alternativos de colunas (legado ou variações de header)
+        if (val === undefined || val === null || val === '') {
+          if (field === 'humidade_fundo') val = qr['hum_fundo'];
+          else if (field === 'humidade_oversize') val = qr['hum_oversize'];
+          else if (field === 'humidade_concentrado') val = qr['hum_conc'];
+        }
+
+        if (val !== undefined && val !== null && val !== '') {
+          report[field] = typeof val === 'number' ? val : sanitize(val);
+        }
+      });
+
+      return report;
+    });
+
+    // 2. Group by category
+    const grouped = allReports.reduce((acc, report) => {
+      const key = report.category;
+      if (!acc[key]) acc[key] = [];
+      acc[key].push(report);
+      return acc;
+    }, {} as Record<string, any[]>);
+
+    // 3. Merge for each category
+    const mergedReports: QualityReport[] = [];
+
+    for (const cat in grouped) {
+      const reports = grouped[cat].sort((a, b) => a.timestamp - b.timestamp);
+
+      // Initial state - Stable ID based on category to prevent duplicates in merge
+      let state: any = {
+        id: `qr-stable-${cat}`, 
+        timestamp: 0,
+        category: cat,
+        area: 'DFP 2',
+        operator: '',
+        turma: 'A',
+        turno: 'MANHÃ',
+        generalObservations: '',
         synced: true
       };
-    });
+
+      for (const report of reports) {
+        // Only update if the new report is newer or equal
+        if (report.timestamp >= state.timestamp) {
+          state.timestamp = report.timestamp;
+          state.area = report.area || state.area;
+          state.operator = report.operator || state.operator;
+          state.turma = report.turma || state.turma;
+          state.turno = report.turno || state.turno;
+        }
+        
+        // Merge fields (latest value for each field across all rows of this category)
+        Object.keys(report).forEach(key => {
+          if (report[key] !== undefined && report[key] !== null && report[key] !== '' && key !== 'timestamp' && key !== 'category' && key !== 'id') {
+            state[key] = report[key];
+          }
+        });
+      }
+      mergedReports.push(state);
+    }
+
+    return mergedReports;
   } catch (error) { return []; }
 };
 
@@ -327,6 +427,8 @@ export const fetchCloudOperationalEvents = async (scriptUrl: string): Promise<Op
   try {
     const response = await fetch(`${scriptUrl}?action=getOperationalEvents&t=${Date.now()}`);
     if (!response.ok) return [];
+    const contentType = response.headers.get("content-type");
+    if (!contentType || !contentType.includes("application/json")) return [];
     const data = await response.json();
     if (!Array.isArray(data)) return [];
 
@@ -348,6 +450,6 @@ export const fetchCloudOperationalEvents = async (scriptUrl: string): Promise<Op
         description: sanitize(oe.descricao),
         synced: true
       };
-    });
+    }).sort((a, b) => b.timestamp - a.timestamp);
   } catch (error) { return []; }
 };

@@ -57,13 +57,13 @@ const SyncDashboard: React.FC<SyncDashboardProps> = ({ reports, pendingItems, qu
 
   const handleTestConnection = async () => {
     setTestStatus('loading');
-    addLog("Iniciando Handshake Vulcan v3.2...");
+    addLog("Iniciando Handshake Vulcan v4.0...");
     
     try {
       // Testa o Backend Express primeiro
       const health = await fetch('/api/health').then(r => r.json());
-      if (health.version === "3.2") {
-        addLog("Sucesso: Backend Express v3.2 Ativo.");
+      if (health.version === "4.0") {
+        addLog("Sucesso: Backend Express v4.0 Ativo.");
       }
     } catch (e) {
       addLog("Aviso: Backend Express não responde.");
@@ -82,7 +82,7 @@ const SyncDashboard: React.FC<SyncDashboardProps> = ({ reports, pendingItems, qu
 
   const handleSync = async () => {
     setIsSyncing(true);
-    addLog("Transmissão Vulcan v3.2 em curso...");
+    addLog("Transmissão Vulcan v4.0 em curso...");
     const unsyncedReports = reports.filter(r => !r.synced);
     const unsyncedPending = pendingItems.filter(p => !p.synced);
     const unsyncedQualityReports = qualityReports.filter(qr => !qr.synced);
@@ -91,14 +91,26 @@ const SyncDashboard: React.FC<SyncDashboardProps> = ({ reports, pendingItems, qu
     try {
       // 1. Sincroniza com Backend Express
       addLog("Sincronizando com Backend Express...");
-      await backendService.sync({
-        reports: unsyncedReports,
-        pending: unsyncedPending,
-        qualityReports: unsyncedQualityReports,
-        operationalEvents: unsyncedOperational,
-        version: "3.2"
-      });
-      addLog("Backend Express: OK.");
+      let backendOk = false;
+      try {
+        await backendService.sync({
+          reports: unsyncedReports,
+          pending: unsyncedPending,
+          qualityReports: unsyncedQualityReports,
+          operationalEvents: unsyncedOperational,
+          version: "4.0"
+        });
+        addLog("Backend Express: OK.");
+        backendOk = true;
+      } catch (backendError: any) {
+        if (backendError.message === 'BACKEND_UNAVAILABLE') {
+          addLog("Aviso: Backend Express não disponível neste ambiente (Modo Cloud Direto).");
+        } else {
+          addLog(`Erro Backend: ${backendError.message || 'Falha na conexão'}`);
+          // Se for um erro real (não apenas indisponibilidade), podemos optar por parar ou continuar
+          // Para Vulcan v4.0, vamos tentar continuar com Google Sheets se o backend falhar
+        }
+      }
 
       // 2. Sincroniza com Google Sheets
       addLog("Sincronizando com Google Sheets...");
@@ -112,24 +124,47 @@ const SyncDashboard: React.FC<SyncDashboardProps> = ({ reports, pendingItems, qu
           unsyncedOperational.map(oe => oe.id)
         );
         if (onRefreshCloud) onRefreshCloud();
-        addLog("Sincronismo v3.2 Concluído.");
+        addLog("Sincronismo v4.0 Concluído.");
       } else {
-        addLog("Falha no Google Sheets v3.2.");
+        addLog(`Falha Google Sheets: ${result.message}`);
       }
-    } catch (error) {
-      addLog("Erro crítico no sincronismo v3.2.");
+    } catch (error: any) {
+      addLog(`Erro crítico: ${error.message || 'Erro desconhecido'}`);
       console.error(error);
     }
     setIsSyncing(false);
   };
 
+  const handleForceCloudRefresh = async () => {
+    if (!window.confirm("Isso irá apagar seus dados locais e baixar tudo novamente da nuvem. Deseja continuar?")) return;
+    
+    setIsSyncing(true);
+    setLogs([]);
+    addLog("Iniciando Limpeza de Cache e Refresh Total...");
+    
+    try {
+      localStorage.removeItem('ultrafino_reports');
+      localStorage.removeItem('ultrafino_pending');
+      localStorage.removeItem('ultrafino_quality');
+      localStorage.removeItem('ultrafino_operational');
+      addLog("Cache Local Limpo.");
+      
+      if (onRefreshCloud) await onRefreshCloud();
+      addLog("Dados da Nuvem Recarregados.");
+    } catch (error: any) {
+      addLog(`Erro no Refresh: ${error.message}`);
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
   const appsScriptCode = `/**
- * PLATAFORMA ULTRAFINO USINA 2 - SCRIPT DE SINCRONIZAÇÃO v3.2 (ESTÁVEL)
+ * PLATAFORMA ULTRAFINO USINA 2 - SCRIPT DE SINCRONIZAÇÃO v4.0 (ESTÁVEL)
  * 
  * INSTRUÇÕES DE IMPLANTAÇÃO:
  * 1. No Editor de Script, clique em "Implantar" > "Nova implantação".
  * 2. Selecione o tipo "App da Web".
- * 3. Descrição: "Vulcan v3.2".
+ * 3. Descrição: "Vulcan v4.0".
  * 4. Quem pode acessar: "Qualquer pessoa" (IMPORTANTE).
  * 5. Clique em "Implantar" e COPIE O NOVO URL.
  */
@@ -172,7 +207,7 @@ function doPost(e) {
       data.qualityReports.forEach(function(qr) {
         if (!isIdExists(sheet, qr.id)) {
           sheet.appendRow([
-            qr.id, qr.data, qr.hora, qr.operador, qr.turma, qr.turno, qr.ply,
+            qr.id, qr.data, qr.hora, qr.categoria || qr.category || "DFP2", qr.operador, qr.turma, qr.turno, qr.ply,
             qr.dfp2_c_cr, qr.dfp2_c_yield, qr.dfp2_c_reject_ash, qr.dfp2_c_conc_ash,
             qr.dfp2_d_cr, qr.dfp2_d_yield, qr.dfp2_d_reject_ash, qr.dfp2_d_conc_ash,
             qr.colunas_d_cr, qr.colunas_d_yield, qr.colunas_d_reject_ash, qr.colunas_d_conc_ash,
@@ -195,7 +230,7 @@ function doPost(e) {
       });
     }
     
-    return ContentService.createTextOutput(JSON.stringify({success: true, version: "3.2"}))
+    return ContentService.createTextOutput(JSON.stringify({success: true, version: "4.0"}))
       .setMimeType(ContentService.MimeType.JSON);
       
   } catch (f) {
@@ -230,7 +265,7 @@ function doGet(e) {
     return getStats(ss);
   }
   
-  return ContentService.createTextOutput("Protocolo Vulcan v3.2 Ativo").setMimeType(ContentService.MimeType.TEXT);
+  return ContentService.createTextOutput("Protocolo Vulcan v4.0 Ativo").setMimeType(ContentService.MimeType.TEXT);
 }
 
 function getStats(ss) {
@@ -257,7 +292,7 @@ function getOrCreateSheet(ss, name) {
     var headers = {
       "Checklists": ["ID", "Data", "Hora", "Área", "Operador", "Turma", "Turno", "Itens Falha", "Observações"],
       "Pendencias": ["ID", "Tag", "Área", "Disciplina", "Descrição", "Prioridade", "Status", "Operador Origem", "Turma Origem", "Turno Origem", "Operador Resolução", "Turma Resolução", "Data Criação", "Data Resolução"],
-      "Qualidade": ["ID", "Data", "Hora", "Operador", "Turma", "Turno", "PLY", "DFP2_C_CR", "DFP2_C_YIELD", "DFP2_C_REJECT_ASH", "DFP2_C_CONC_ASH", "DFP2_D_CR", "DFP2_D_YIELD", "DFP2_D_REJECT_ASH", "DFP2_D_CONC_ASH", "COLUNAS_D_CR", "COLUNAS_D_YIELD", "COLUNAS_D_REJECT_ASH", "COLUNAS_D_CONC_ASH", "HUM_FUNDO", "HUM_OVERSIZE", "HUM_CONC", "OBS"],
+      "Qualidade": ["ID", "Data", "Hora", "Categoria", "Operador", "Turma", "Turno", "PLY", "DFP2_C_CR", "DFP2_C_YIELD", "DFP2_C_REJECT_ASH", "DFP2_C_CONC_ASH", "DFP2_D_CR", "DFP2_D_YIELD", "DFP2_D_REJECT_ASH", "DFP2_D_CONC_ASH", "COLUNAS_D_CR", "COLUNAS_D_YIELD", "COLUNAS_D_REJECT_ASH", "COLUNAS_D_CONC_ASH", "HUM_FUNDO", "HUM_OVERSIZE", "HUM_CONC", "OBS"],
       "Performance": ["ID", "Data", "Hora", "Tipo", "Colaborador", "Matrícula", "Equipe", "Função", "Autor", "Autor Matrícula", "Descrição"]
     };
     sheet.appendRow(headers[name]);
@@ -310,14 +345,23 @@ function fetchSheetData(ss, sheetName) {
     <div className="max-w-6xl mx-auto space-y-8 pb-20 animate-in fade-in duration-700">
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
-          <h1 className="text-3xl font-black text-slate-900 tracking-tighter uppercase">VULCAN CLOUD v3.2</h1>
+          <h1 className="text-3xl font-black text-slate-900 tracking-tighter uppercase">VULCAN CLOUD v4.0</h1>
           <p className="text-slate-500 font-bold uppercase text-[10px] tracking-widest mt-1">Sincronismo Fiel de Data/Hora</p>
         </div>
-        {!isAdmin && (
-          <button onClick={() => setshowConfig(!showConfig)} className="flex items-center gap-2 px-6 py-3 bg-slate-900 text-white rounded-2xl font-black text-[10px] uppercase shadow-xl hover:scale-105 transition-all">
-            <Settings2 size={16} /> {showConfig ? 'Fechar Painel' : 'Configurar Script v3.2'}
+        <div className="flex gap-2">
+          {!isAdmin && (
+            <button onClick={() => setshowConfig(!showConfig)} className="flex items-center gap-2 px-6 py-3 bg-slate-900 text-white rounded-2xl font-black text-[10px] uppercase shadow-xl hover:scale-105 transition-all">
+              <Settings2 size={16} /> {showConfig ? 'Fechar Painel' : 'Configurar Script v4.0'}
+            </button>
+          )}
+          <button 
+            onClick={handleForceCloudRefresh}
+            disabled={isSyncing}
+            className="flex items-center gap-2 px-6 py-3 bg-amber-500 text-white rounded-2xl font-black text-[10px] uppercase shadow-xl hover:scale-105 transition-all disabled:opacity-50"
+          >
+            <RefreshCw size={16} className={isSyncing ? 'animate-spin' : ''} /> Forçar Refresh Nuvem
           </button>
-        )}
+        </div>
       </div>
 
       {!showConfig ? (
@@ -329,7 +373,7 @@ function fetchSheetData(ss, sheetName) {
                   <div className="w-20 h-20 bg-blue-50 text-blue-600 rounded-3xl flex items-center justify-center shadow-inner">
                     <Database size={40} className={isSyncing ? 'animate-bounce' : ''} />
                   </div>
-                  <h2 className="text-2xl font-black text-slate-900 uppercase tracking-tight">Carga Master v3.2</h2>
+                  <h2 className="text-2xl font-black text-slate-900 uppercase tracking-tight">Carga Master v4.0</h2>
                   <p className="text-slate-500 text-xs font-bold uppercase leading-relaxed max-w-sm">
                     Sincronismo bidirecional que preserva os horários exatos registrados na planilha PEND_GERAL.
                   </p>
@@ -339,7 +383,7 @@ function fetchSheetData(ss, sheetName) {
                     testStatus === 'success' ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : 'bg-slate-50 text-slate-400 border-slate-100'
                   }`}>
                     {testStatus === 'success' ? <Wifi size={14} /> : <WifiOff size={14} />}
-                    VULCAN v3.2 {testStatus === 'success' ? 'ONLINE' : 'OFFLINE'}
+                    VULCAN v4.0 {testStatus === 'success' ? 'ONLINE' : 'OFFLINE'}
                   </span>
                 </div>
               </div>
@@ -364,7 +408,7 @@ function fetchSheetData(ss, sheetName) {
               <div className="grid grid-cols-2 gap-4 pt-2">
                 <button 
                   onClick={() => {
-                    if(confirm("Restaurar URL padrão v3.2?")) {
+                    if(confirm("Restaurar URL padrão v4.0?")) {
                       setScriptUrl(DEFAULT_SCRIPT_URL);
                       addLog("URL Restaurada para o Padrão.");
                     }
@@ -390,7 +434,7 @@ function fetchSheetData(ss, sheetName) {
 
           <div className="bg-slate-950 p-8 rounded-[3rem] text-white shadow-2xl border-4 border-slate-900 flex flex-col h-full">
             <div className="flex items-center justify-between mb-6">
-              <h3 className="text-[10px] font-black uppercase tracking-[0.2em] flex items-center gap-2"><Terminal size={16} className="text-blue-500" /> Telemetria v3.2</h3>
+              <h3 className="text-[10px] font-black uppercase tracking-[0.2em] flex items-center gap-2"><Terminal size={16} className="text-blue-500" /> Telemetria v4.0</h3>
               <Activity size={16} className="text-emerald-500 animate-pulse" />
             </div>
             <div className="flex-grow space-y-3 font-mono text-[9px] text-slate-400 overflow-y-auto max-h-[350px] custom-scrollbar">
@@ -403,7 +447,7 @@ function fetchSheetData(ss, sheetName) {
           {!isAdmin ? (
             <div className="p-16 text-center space-y-8">
               <div className="w-24 h-24 bg-blue-50 text-blue-600 rounded-[2rem] flex items-center justify-center mx-auto shadow-inner"><Lock size={40} /></div>
-              <h2 className="text-2xl font-black text-slate-900 uppercase">Segurança Vulcan v3.2</h2>
+              <h2 className="text-2xl font-black text-slate-900 uppercase">Segurança Vulcan v4.0</h2>
               <form onSubmit={(e) => { e.preventDefault(); if(password === ADMIN_PASSWORD) setIsAdmin(true); else alert("Senha incorreta"); }} className="max-w-xs mx-auto space-y-4">
                 <input type="password" placeholder="SENHA ADMIN..." value={password || ''} onChange={(e) => setPassword(e.target.value)} className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-6 py-5 text-center font-black focus:ring-4 focus:ring-blue-500/10 outline-none transition-all" />
                 <button type="submit" className="w-full py-5 bg-blue-600 text-white rounded-2xl font-black uppercase text-xs shadow-xl">Entrar Admin</button>
@@ -415,21 +459,21 @@ function fetchSheetData(ss, sheetName) {
               <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-6 border-b border-slate-100 pb-10">
                 <div className="flex items-center gap-4">
                   <div className="w-14 h-14 bg-emerald-100 text-emerald-600 rounded-2xl flex items-center justify-center shadow-sm"><ShieldCheck size={32} /></div>
-                  <div><h3 className="text-2xl font-black text-slate-900 uppercase tracking-tighter">Backend Admin v3.2</h3><p className="text-slate-500 text-[10px] font-black uppercase tracking-widest">Controle de Sincronismo de Data e Hora.</p></div>
+                  <div><h3 className="text-2xl font-black text-slate-900 uppercase tracking-tighter">Backend Admin v4.0</h3><p className="text-slate-500 text-[10px] font-black uppercase tracking-widest">Controle de Sincronismo de Data e Hora.</p></div>
                 </div>
                 <div className="flex flex-wrap gap-3">
                   <a href={MASTER_SHEET_URL} target="_blank" rel="noopener noreferrer" className="flex items-center gap-3 px-8 py-4 bg-gradient-to-r from-blue-600 to-indigo-700 text-white rounded-2xl text-[10px] font-black uppercase transition-all shadow-xl">
                     <FileSpreadsheet size={18} /> Planilha Mestra <ExternalLink size={14} />
                   </a>
                   <button onClick={() => { navigator.clipboard.writeText(appsScriptCode); setCopySuccess(true); setTimeout(()=>setCopySuccess(false), 2000); }} className={`flex items-center gap-3 px-8 py-4 rounded-2xl text-[10px] font-black uppercase transition-all shadow-xl ${copySuccess ? 'bg-emerald-500 text-white' : 'bg-slate-900 text-white hover:bg-slate-800'}`}>
-                    <Code size={16} /> {copySuccess ? 'Copiado!' : 'Copiar Script v3.2'}
+                    <Code size={16} /> {copySuccess ? 'Copiado!' : 'Copiar Script v4.0'}
                   </button>
                 </div>
               </div>
 
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
                 <div className="space-y-4">
-                  <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2 px-2"><Terminal size={14} /> Código do Backend v3.2</h4>
+                  <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2 px-2"><Terminal size={14} /> Código do Backend v4.0</h4>
                   <div className="bg-slate-900 p-8 rounded-[2.5rem] border border-slate-800 shadow-inner overflow-hidden">
                     <pre className="text-[10px] text-slate-300 font-mono overflow-y-auto max-h-[400px] custom-scrollbar leading-relaxed">{appsScriptCode}</pre>
                   </div>
@@ -441,7 +485,7 @@ function fetchSheetData(ss, sheetName) {
                         <label className="text-[10px] font-black text-slate-900 uppercase tracking-widest">Endpoint Google Script</label>
                         <button 
                           onClick={() => {
-                            if(confirm("Deseja restaurar a URL padrão v3.2?")) {
+                            if(confirm("Deseja restaurar a URL padrão v4.0?")) {
                               setScriptUrl(DEFAULT_SCRIPT_URL);
                             }
                           }}
@@ -453,7 +497,7 @@ function fetchSheetData(ss, sheetName) {
                       <input type="text" value={scriptUrl || ''} onChange={(e) => setScriptUrl(e.target.value)} placeholder="https://script.google.com/macros/s/..." className="w-full px-6 py-5 bg-white border-2 border-slate-200 rounded-2xl font-bold text-xs text-blue-600 focus:border-blue-500 outline-none" />
                     </div>
                     <div className="grid grid-cols-2 gap-3">
-                      <button onClick={handleTestConnection} className="py-5 rounded-2xl font-black uppercase text-[10px] flex items-center justify-center gap-2 bg-slate-900 text-white shadow-xl">Validar v3.2</button>
+                      <button onClick={handleTestConnection} className="py-5 rounded-2xl font-black uppercase text-[10px] flex items-center justify-center gap-2 bg-slate-900 text-white shadow-xl">Validar v4.0</button>
                       <button onClick={() => setshowConfig(false)} className="py-5 bg-blue-600 text-white rounded-2xl font-black uppercase text-[10px] flex items-center justify-center gap-2 shadow-xl">Salvar e Sair</button>
                     </div>
                   </div>
